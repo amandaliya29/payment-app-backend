@@ -8,6 +8,21 @@ use Illuminate\Support\Facades\Crypt;
 class UserBankAccounts extends Model
 {
     /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'user_id',
+        'bank_id',
+        'account_holder_name',
+        'account_number',
+        'ifsc_code',
+        'aadhaar_number',
+        'pan_number',
+    ];
+
+    /**
      * Encrypt account number before saving to database.
      *
      * @param  string  $value

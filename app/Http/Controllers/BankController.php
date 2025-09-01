@@ -47,18 +47,18 @@ class BankController extends Controller
         try {
             // validation
             $validation = Validator::make($request->all(), [
-                'bank_id'             => 'required|integer|exists:banks,id',
-                'aadhaar_number'      => 'required|digits:12',
-                'pan_number'          => [
+                'bank_id' => 'required|integer|exists:banks,id',
+                'aadhaar_number' => 'required|digits:12',
+                'pan_number' => [
                     'required',
                     'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/'
                 ],
                 'account_holder_name' => 'required|string|max:255',
-                'account_number'      => [
+                'account_number' => [
                     'required',
                     'digits_between:9,18'
                 ],
-                'ifsc_code'           => [
+                'ifsc_code' => [
                     'required',
                     'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/'
                 ]
@@ -75,11 +75,11 @@ class BankController extends Controller
             ]);
 
             $userBankAccount->fill([
-                'aadhaar_number'      => $request->aadhaar_number,
-                'pan_number'          => $request->pan_number,
+                'aadhaar_number' => $request->aadhaar_number,
+                'pan_number' => $request->pan_number,
                 'account_holder_name' => $request->account_holder_name,
-                'account_number'      => $request->account_number,
-                'ifsc_code'           => $request->ifsc_code,
+                'account_number' => $request->account_number,
+                'ifsc_code' => $request->ifsc_code,
             ]);
 
             if (!UserBankAccounts::where('user_id', Auth::id())->exists()) {
@@ -87,7 +87,19 @@ class BankController extends Controller
             }
 
             $handles = ['@oksbi', '@okaxis', '@okicici', '@okhdfcbank', '@okyesbank'];
-            $userBankAccount->upi_id = strtolower(Str::random(8)) . $handles[array_rand($handles)];
+
+            $baseUpi = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $request->account_holder_name));
+            if (empty($baseUpi)) {
+                $baseUpi = 'user';
+            }
+
+            $handle = $handles[array_rand($handles)];
+            do {
+                $randomDigits = rand(1, 9999);
+                $upiCandidate = $baseUpi . $randomDigits . $handle;
+            } while (UserBankAccounts::where('upi_id', $upiCandidate)->exists());
+
+            $userBankAccount->upi_id = $upiCandidate;
             $userBankAccount->save();
 
             return $this->successResponse([], "Save successfully");

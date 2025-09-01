@@ -17,5 +17,6 @@ Route::controller(BankController::class)
     ->group(
         function () {
             Route::get('list', 'list');
+            Route::post('details', 'saveBankDetails');
         }
     );
