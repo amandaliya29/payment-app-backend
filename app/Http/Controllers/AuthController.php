@@ -58,4 +58,65 @@ class AuthController extends Controller
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
+    /**
+     * Search users by phone number or UPI ID.
+     *
+     * This method accepts a search string which can be either a phone number
+     * or a UPI ID. It returns the list of users matching the criteria
+     * along with their bank account details.
+     *
+     * @param \Illuminate\Http\Request $request The HTTP request instance containing the search parameter.
+     *
+     * @return \Illuminate\Http\JsonResponse Returns a JSON response with either the user data or an error message.
+     */
+    public function searchUsers(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'search' => 'required|string|max:100',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse("Validation Error", 403);
+            }
+
+            $search = $request->input('search');
+
+            $users = User::with([
+                'bankAccounts' => function ($query) {
+                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id')
+                        ->whereNotNull('aadhaar_number')
+                        ->whereNotNull('pan_number')
+                        ->where('is_primary', 1);
+                }
+            ])
+                ->where(function ($query) use ($search) {
+                    $query->where('phone', 'LIKE', "%{$search}%")
+                        ->WhereHas('bankAccounts')
+                        ->orWhereHas('bankAccounts', function ($q) use ($search) {
+                            $q->whereNotNull('aadhaar_number')
+                                ->whereNotNull('pan_number')
+                                ->where('is_primary', 1)
+                                ->where('upi_id', 'LIKE', "%{$search}%");
+                        });
+                })
+                ->get();
+
+            if ($users->isEmpty()) {
+                return $this->errorResponse("No users found", 404);
+            }
+
+            return $this->successResponse(
+                $users->toArray(),
+                "Users fetched successfully"
+            );
+
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
 }

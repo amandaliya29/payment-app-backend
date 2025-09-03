@@ -46,4 +46,14 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Get all bank accounts associated with the user.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function bankAccounts()
+    {
+        return $this->hasMany(UserBankAccounts::class, 'user_id', 'id')->with('bank');
+    }
 }
