@@ -86,21 +86,26 @@ class AuthController extends Controller
             $search = $request->input('search');
 
             $users = User::with([
+                'bankAccounts.bank' => function ($query) {
+                    $query->select('id', 'name');
+                },
                 'bankAccounts' => function ($query) {
-                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id')
+                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'aadhaar_number', 'pan_number', 'is_primary')
                         ->whereNotNull('aadhaar_number')
-                        ->whereNotNull('pan_number')
-                        ->where('is_primary', 1);
+                        ->whereNotNull('pan_number');
                 }
             ])
                 ->where(function ($query) use ($search) {
-                    $query->where('phone', 'LIKE', "%{$search}%")
-                        ->WhereHas('bankAccounts')
+                    $query->where(function ($q) use ($search) {
+                        $q->where('phone', 'LIKE', "%{$search}%")
+                            ->whereHas('bankAccounts', function ($q2) {
+                                $q2->where('is_primary', 1);
+                            });
+                    })
                         ->orWhereHas('bankAccounts', function ($q) use ($search) {
-                            $q->whereNotNull('aadhaar_number')
-                                ->whereNotNull('pan_number')
-                                ->where('is_primary', 1)
-                                ->where('upi_id', 'LIKE', "%{$search}%");
+                            $q->where('upi_id', 'LIKE', "%{$search}%")
+                                ->whereNotNull('aadhaar_number')
+                                ->whereNotNull('pan_number');
                         });
                 })
                 ->get();
@@ -109,8 +114,39 @@ class AuthController extends Controller
                 return $this->errorResponse("No users found", 404);
             }
 
+            $data = $users->map(function ($user) use ($search) {
+                $bankAccount = $user->bankAccounts->first(function ($acc) use ($search) {
+                    return stripos($acc->upi_id, $search) !== false;
+                });
+
+                if (!$bankAccount) {
+                    $bankAccount = $user->bankAccounts->firstWhere('is_primary', 1);
+                }
+
+                if (!$bankAccount) {
+                    return null;
+                }
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'firebase_uid' => $user->firebase_uid,
+                    'account_holder_name' => $bankAccount->account_holder_name ?? null,
+                    'upi_id' => $bankAccount->upi_id ?? null,
+                    'bank_name' => $bankAccount->bank->name ?? null,
+                    'created_at' => $user->created_at,
+                    'updated_at' => $user->updated_at,
+                ];
+            })->filter();
+
+            if ($data->isEmpty()) {
+                return $this->errorResponse("No users found", 404);
+            }
+
             return $this->successResponse(
-                $users->toArray(),
+                $data->toArray(),
                 "Users fetched successfully"
             );
 
