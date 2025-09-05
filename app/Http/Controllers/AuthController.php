@@ -155,4 +155,24 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Get single user details by user_id (from route param).
+     *
+     * @param int $user_id The ID of the user to fetch.
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function get($user_id)
+    {
+        try {
+            $user = User::with('bankAccounts')->find($user_id);
+
+            if (!$user) {
+                return $this->errorResponse("User not found", 404);
+            }
+
+            return $this->successResponse($user->toArray(), "User fetched successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
 }
