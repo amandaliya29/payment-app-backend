@@ -65,4 +65,14 @@ class UserBankAccounts extends Model
     {
         return $value ? Crypt::decryptString($value) : null;
     }
+
+    /**
+     * Get the bank associated with the user bank account.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function bank()
+    {
+        return $this->belongsTo(Bank::class, 'bank_id', 'id');
+    }
 }

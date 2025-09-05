@@ -58,4 +58,101 @@ class AuthController extends Controller
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
+    /**
+     * Search users by phone number or UPI ID.
+     *
+     * This method accepts a search string which can be either a phone number
+     * or a UPI ID. It returns the list of users matching the criteria
+     * along with their bank account details.
+     *
+     * @param \Illuminate\Http\Request $request The HTTP request instance containing the search parameter.
+     *
+     * @return \Illuminate\Http\JsonResponse Returns a JSON response with either the user data or an error message.
+     */
+    public function searchUsers(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'search' => 'required|string|max:100',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse("Validation Error", 403);
+            }
+
+            $search = $request->input('search');
+
+            $users = User::with([
+                'bankAccounts.bank' => function ($query) {
+                    $query->select('id', 'name');
+                },
+                'bankAccounts' => function ($query) {
+                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'aadhaar_number', 'pan_number', 'is_primary')
+                        ->whereNotNull('aadhaar_number')
+                        ->whereNotNull('pan_number');
+                }
+            ])
+                ->where(function ($query) use ($search) {
+                    $query->where(function ($q) use ($search) {
+                        $q->where('phone', 'LIKE', "%{$search}%")
+                            ->whereHas('bankAccounts', function ($q2) {
+                                $q2->where('is_primary', 1);
+                            });
+                    })
+                        ->orWhereHas('bankAccounts', function ($q) use ($search) {
+                            $q->where('upi_id', 'LIKE', "%{$search}%")
+                                ->whereNotNull('aadhaar_number')
+                                ->whereNotNull('pan_number');
+                        });
+                })
+                ->get();
+
+            if ($users->isEmpty()) {
+                return $this->errorResponse("No users found", 404);
+            }
+
+            $data = $users->map(function ($user) use ($search) {
+                $bankAccount = $user->bankAccounts->first(function ($acc) use ($search) {
+                    return stripos($acc->upi_id, $search) !== false;
+                });
+
+                if (!$bankAccount) {
+                    $bankAccount = $user->bankAccounts->firstWhere('is_primary', 1);
+                }
+
+                if (!$bankAccount) {
+                    return null;
+                }
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'firebase_uid' => $user->firebase_uid,
+                    'account_holder_name' => $bankAccount->account_holder_name ?? null,
+                    'upi_id' => $bankAccount->upi_id ?? null,
+                    'bank_name' => $bankAccount->bank->name ?? null,
+                    'created_at' => $user->created_at,
+                    'updated_at' => $user->updated_at,
+                ];
+            })->filter();
+
+            if ($data->isEmpty()) {
+                return $this->errorResponse("No users found", 404);
+            }
+
+            return $this->successResponse(
+                $data->toArray(),
+                "Users fetched successfully"
+            );
+
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
 }
