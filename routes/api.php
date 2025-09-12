@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankController;
+use App\Models\UserBankAccounts;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
@@ -23,5 +24,15 @@ Route::controller(BankController::class)
         function () {
             Route::get('list', 'list');
             Route::post('details', 'saveBankDetails');
+        }
+    );
+
+Route::controller(UserBankAccounts::class)
+    ->middleware(['auth:sanctum'])
+    ->prefix('credit-upi')
+    ->group(
+        function () {
+            Route::get('bank/list', 'bankList');
+            Route::get('bank/activate', 'activate');
         }
     );

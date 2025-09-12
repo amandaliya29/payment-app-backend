@@ -75,4 +75,14 @@ class UserBankAccounts extends Model
     {
         return $this->belongsTo(Bank::class, 'bank_id', 'id');
     }
+
+    /**
+     * Get the bank associated with the user bank account.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function bankCreditUpi()
+    {
+        return $this->belongsTo(UserBankCreditUpi::class, 'id', 'bank_account_id');
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\UserBankAccounts;
 use App\Models\UserBankCreditUpi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -69,6 +70,39 @@ class BankCreditUpiController extends Controller
             );
         } catch (FailedToVerifyToken $e) {
             return $this->errorResponse("OTP not verified", 401);
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Fetch the user's bank accounts with masked account numbers.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * This method retrieves the user's bank accounts along with related bank
+     * and bankCreditUpi details, masks the account number to show only
+     * the last 4 digits (e.g., **** **** 1234), and returns the formatted data.
+     */
+    public function bankList()
+    {
+        try {
+            $userBankAccounts = UserBankAccounts::with(['bank', 'bankCreditUpi'])
+                ->where('user_id', auth()->id())
+                ->select(['account_number', 'upi_id'])
+                ->get()
+                ->map(function ($account) {
+                    // Mask account number to show only last 4 digits
+                    if (!empty($account->account_number)) {
+                        $account->account_number = '**** **** ' . substr($account->account_number, -4);
+                    }
+                    return $account;
+                });
+
+            return $this->successResponse(
+                $userBankAccounts,
+                "Fetched Successfully"
+            );
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
