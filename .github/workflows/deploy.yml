@@ -1,0 +1,30 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to Server
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.SERVER_IP }} "
+          cd /var/www/laravel &&
+          git pull origin main &&
+          composer install --no-dev --optimize-autoloader &&
+          php artisan migrate --force &&
+          php artisan config:cache &&
+          php artisan route:cache &&
+          php artisan view:cache &&
+          sudo systemctl restart apache2
+          "
