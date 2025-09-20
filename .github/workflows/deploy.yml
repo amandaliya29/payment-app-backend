@@ -18,7 +18,7 @@ jobs:
 
       - name: Deploy to Server
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.SERVER_IP }} "
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.SERVER_IP }} "
           cd /var/www/laravel &&
           git pull origin main &&
           composer install --no-dev --optimize-autoloader &&
