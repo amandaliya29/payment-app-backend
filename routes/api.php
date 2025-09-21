@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankController;
-use App\Models\UserBankAccounts;
+use App\Http\Controllers\BankCreditUpiController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
@@ -27,7 +27,7 @@ Route::controller(BankController::class)
         }
     );
 
-Route::controller(UserBankAccounts::class)
+Route::controller(BankCreditUpiController::class)
     ->middleware(['auth:sanctum'])
     ->prefix('credit-upi')
     ->group(
