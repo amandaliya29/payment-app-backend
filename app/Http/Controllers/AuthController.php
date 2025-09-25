@@ -60,6 +60,25 @@ class AuthController extends Controller
     }
 
     /**
+     * Log out the authenticated user by deleting their current access token.
+     *
+     * This method revokes the current access token for the authenticated user, 
+     * effectively logging them out. Returns a success response if the logout 
+     * is successful, or an error response if an exception occurs.
+     *
+     * @return \Illuminate\Http\JsonResponse JSON response indicating the success or failure of the logout process.
+     */
+    public function logout()
+    {
+        try {
+            auth()->user()->currentAccessToken()->delete();
+            return $this->successResponse([], "Logout Successful");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
      * Search users by phone number or UPI ID.
      *
      * This method accepts a search string which can be either a phone number
