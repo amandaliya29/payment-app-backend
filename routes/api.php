@@ -5,6 +5,8 @@ use App\Http\Controllers\BankController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
+Route::middleware('auth:sanctum')
+    ->get('logout', [AuthController::class, 'logout']);
 
 Route::controller(AuthController::class)
     ->middleware(['auth:sanctum'])
