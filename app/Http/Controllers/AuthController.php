@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\UserBankAccounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Kreait\Firebase\Auth as FirebaseAuth;
@@ -49,6 +50,7 @@ class AuthController extends Controller
                 $user->save();
             }
 
+            $user->has_bank_accounts = (bool) UserBankAccounts::where('user_id', $user->id)->exists();
             $token = $user->createToken('user-auth')->plainTextToken;
             return $this->successResponse(
                 ['token' => $token, 'user' => $user],
