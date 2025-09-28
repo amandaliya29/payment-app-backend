@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Auth as FirebaseAuth;
+use Kreait\Firebase\Messaging as FirebaseMessaging;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -13,12 +14,24 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(FirebaseAuth::class, function ($app) {
-            $factory = (new Factory)
+        $this->app->singleton(Factory::class, function () {
+            return (new Factory)
                 ->withServiceAccount(config('firebase.projects.app.credentials'));
-
-            return $factory->createAuth();
         });
+
+        // Register Firebase Auth
+        $this->app->singleton(
+            FirebaseAuth::class,
+            fn($app) =>
+            $app->make(Factory::class)->createAuth()
+        );
+
+        // Register Firebase Messaging
+        $this->app->singleton(
+            FirebaseMessaging::class,
+            fn($app) =>
+            $app->make(Factory::class)->createMessaging()
+        );
     }
 
     /**
