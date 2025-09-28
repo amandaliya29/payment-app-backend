@@ -47,10 +47,10 @@ class AuthController extends Controller
             if (!$user) {
                 $user = new User();
                 $user->firebase_uid = $uid;
-                $user->fcm_token = $request->fcm_token;
                 $user->phone = $phone;
-                $user->save();
             }
+            $user->fcm_token = $request->fcm_token;
+            $user->save();
 
             $user->has_bank_accounts = (bool) UserBankAccounts::where('user_id', $user->id)->exists();
             $token = $user->createToken('user-auth')->plainTextToken;
