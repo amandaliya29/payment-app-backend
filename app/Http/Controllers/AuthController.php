@@ -48,12 +48,15 @@ class AuthController extends Controller
                 $user = new User();
                 $user->firebase_uid = $uid;
                 $user->phone = $phone;
+                $user->save();
             }
-            $user->fcm_token = $request->fcm_token;
-            $user->save();
 
             $user->has_bank_accounts = (bool) UserBankAccounts::where('user_id', $user->id)->exists();
             $token = $user->createToken('user-auth')->plainTextToken;
+
+            $accessToken = $user->tokens()->latest()->first();
+            $accessToken->update(['fcm_token' => $request->fcm_token]);
+
             return $this->successResponse(
                 ['token' => $token, 'user' => $user],
                 "Login Successful"
@@ -242,9 +245,14 @@ class AuthController extends Controller
                 return $this->errorResponse("Validation Error", 403);
             }
 
-            $user = User::find(auth()->id());
-            $user->fcm_token = $request->fcm_token;
-            $user->save();
+            $token = auth()->user()->currentAccessToken();
+
+            if (!$token) {
+                return $this->errorResponse("No active token found", 404);
+            }
+
+            $token->fcm_token = $request->fcm_token;
+            $token->save();
 
             return $this->successResponse([], "FCM token updated successfully");
         } catch (\Throwable $th) {

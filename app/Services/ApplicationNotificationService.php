@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Messaging;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -18,20 +17,19 @@ class ApplicationNotificationService
     }
 
     /**
-     * Send Notification to a User
+     * Send Notification to the current device (current token)
      *
-     * @param int $userId
      * @param string $title
      * @param string $message
      * @param array $data
      * @return bool
      */
-    public function sendNotification(int $userId, string $title, string $message, array $data = []): bool
+    public function sendNotificationToCurrentToken(string $title, string $message, array $data = []): bool
     {
         try {
-            $user = User::find($userId);
+            $token = auth()->user()->currentAccessToken();
 
-            if (!$user || !$user->fcm_token) {
+            if (!$token || !$token->fcm_token) {
                 return false;
             }
 
@@ -39,7 +37,7 @@ class ApplicationNotificationService
                 'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
             ], $data);
 
-            $cloudMessage = CloudMessage::withTarget('token', $user->fcm_token)
+            $cloudMessage = CloudMessage::withTarget('token', $token->fcm_token)
                 ->withNotification(Notification::create($title, $message))
                 ->withData($payloadData);
 
