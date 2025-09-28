@@ -31,6 +31,7 @@ class AuthController extends Controller
             // validation
             $validation = Validator::make($request->all(), [
                 'token' => 'required|string',
+                'fcm_token' => 'required|string'
             ]);
 
             // validation error
@@ -46,6 +47,7 @@ class AuthController extends Controller
             if (!$user) {
                 $user = new User();
                 $user->firebase_uid = $uid;
+                $user->fcm_token = $request->fcm_token;
                 $user->phone = $phone;
                 $user->save();
             }
@@ -192,6 +194,59 @@ class AuthController extends Controller
             }
 
             return $this->successResponse($user->toArray(), "User fetched successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Fetch the authenticated user's profile along with their bank accounts.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function profile()
+    {
+        try {
+            $bankAccounts = UserBankAccounts::where('user_id', auth()->id())->get();
+
+            return $this->successResponse([
+                'user' => auth()->user(),
+                'bank_accounts' => $bankAccounts,
+            ], "Profile fetched successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Update the authenticated user's FCM token.
+     *
+     * This method validates the incoming request for an FCM token
+     * and updates it for the authenticated user. Returns a success
+     * response on success or an appropriate error response on failure.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request containing the FCM token.
+     * 
+     * @return \Illuminate\Http\JsonResponse A JSON response indicating the status of the operation.
+     */
+    public function updateFcmToken(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'fcm_token' => 'required|string'
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse("Validation Error", 403);
+            }
+
+            $user = User::find(auth()->id());
+            $user->fcm_token = $request->fcm_token;
+            $user->save();
+
+            return $this->successResponse([], "FCM token updated successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
