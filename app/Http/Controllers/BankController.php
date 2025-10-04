@@ -6,8 +6,10 @@ use App\Models\Bank;
 use App\Models\UserBankAccounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Zxing\QrReader;
 
 class BankController extends Controller
 {
@@ -66,7 +68,7 @@ class BankController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422, $validation->errors());
+                return $this->errorResponse("Validation Error", 422);
             }
 
             $userBankAccount = UserBankAccounts::firstOrNew([
@@ -102,7 +104,43 @@ class BankController extends Controller
             $userBankAccount->upi_id = $upiCandidate;
             $userBankAccount->save();
 
-            return $this->successResponse([], "Save successfully");
+            return $this->successResponse($userBankAccount, "Save successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Scan a QR code from an uploaded image.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function scan(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'image' => 'required|image|mimes:png,jpg,jpeg',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse("Validation Error", 422);
+            }
+
+            $filePath = $this->upload('qr', 'image', 'private');
+            $absolutePath = storage_path('app/private/' . $filePath);
+
+            $qrReader = new QrReader($absolutePath);
+            $text = $qrReader->text();
+
+            Storage::disk('local')->delete($filePath);
+            if (!$text) {
+                return $this->errorResponse("No valid QR code found in the image.", 422);
+            }
+
+            return $this->successResponse(['code' => $text], "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

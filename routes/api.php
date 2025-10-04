@@ -28,6 +28,7 @@ Route::controller(BankController::class)
         function () {
             Route::get('list', 'list');
             Route::post('details', 'saveBankDetails');
+            Route::post('qr/scan', 'scan');
         }
     );
 
