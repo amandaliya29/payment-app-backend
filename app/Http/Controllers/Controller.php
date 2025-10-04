@@ -10,14 +10,14 @@ abstract class Controller
     /**
      * Return a successful JSON response.
      *
-     * @param array<mixed> $data     The payload data (default empty array).
-     * @param string|array $messages Success message(s).
-     * @param int          $code     HTTP status code (default 200).
+     * @param array<mixed>|object $data     The payload data (default empty array).
+     * @param string|array        $messages Success message(s).
+     * @param int                 $code     HTTP status code (default 200).
      *
      * @return JsonResponse
      */
     public function successResponse(
-        array $data = [],
+        array|object $data = [],
         string|array $messages = 'Success',
         int $code = 200
     ): JsonResponse {
