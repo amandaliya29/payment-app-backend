@@ -4,15 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Bank;
 use App\Models\UserBankAccounts;
-use App\Models\UserBankCreditUpi;
 use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Str;
 use Zxing\QrReader;
 
 class BankController extends Controller
@@ -132,125 +128,6 @@ class BankController extends Controller
             }
 
             return $this->successResponse(['code' => $text], "Fetch successfully");
-        } catch (\Throwable $th) {
-            return $this->errorResponse("Internal Server Error", 500);
-        }
-    }
-
-    /**
-     * Transfer money between bank accounts or via UPI.
-     *
-     * Validates the request, ensures the sender account belongs to the authenticated user,
-     * checks balance availability, and processes the transfer atomically using a DB transaction.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
-     *
-     * @throws \Throwable
-     */
-    public function sendMoney(Request $request)
-    {
-        try {
-            // validation
-            $validation = Validator::make($request->all(), [
-                'amount' => 'required|numeric|between:0,999999999999.99',
-                'from_bank_account' => [
-                    'required',
-                    Rule::exists('user_bank_accounts', 'id')->where(function ($query) {
-                        $query->where('user_id', auth()->id());
-                    }),
-                ],
-                'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
-                'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
-            ]);
-
-            // validation error
-            if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
-            }
-
-            if (empty($request->to_bank_account) && empty($request->upi_id)) {
-                return $this->errorResponse("Receiver account or UPI ID is required", 422);
-            }
-
-            $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
-                ->orWhere('upi_id', $request->upi_id)
-                ->first();
-
-            if (!$receiverBankAccount) {
-                return $this->errorResponse("Receiver bank account not found", 404);
-            }
-
-            $senderBankAccount = UserBankAccounts::find($request->from_bank_account);
-            if ($senderBankAccount->amount < $request->amount) {
-                return $this->errorResponse("Insufficient balance", 400);
-            }
-
-            DB::transaction(function () use ($senderBankAccount, $receiverBankAccount, $request) {
-                $receiverBankAccount->increment('amount', $request->amount);
-                $senderBankAccount->decrement('amount', $request->amount);
-            });
-
-            return $this->successResponse([], "Send successfully");
-        } catch (\Throwable $th) {
-            return $this->errorResponse("Internal Server Error", 500);
-        }
-    }
-
-    /**
-     * Handle payment via Credit/UPI.
-     *
-     * Validates the request, checks user authentication and balance,
-     * then transfers the specified amount from the sender's credit/UPI
-     * to the receiver's bank account or UPI ID.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function payWithCreditUpi(Request $request)
-    {
-        try {
-            // validation
-            $validation = Validator::make($request->all(), [
-                'amount' => 'required|numeric|between:0,999999999999.99',
-                'credit_upi' => 'required|exists:user_bank_credit_upis,upi_id',
-                'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
-                'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
-            ]);
-
-            // validation error
-            if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
-            }
-
-            $senderCreditUpi = UserBankCreditUpi::where('upi_id', $request->credit_upi)->first();
-
-            if ($senderCreditUpi->user_id !== auth()->id()) {
-                return $this->errorResponse('Unauthorized', 403);
-            }
-
-            if (empty($request->to_bank_account) && empty($request->upi_id)) {
-                return $this->errorResponse("Receiver account or UPI ID is required", 422);
-            }
-
-            $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
-                ->orWhere('upi_id', $request->upi_id)
-                ->first();
-
-            if (!$receiverBankAccount) {
-                return $this->errorResponse("Receiver bank account not found", 404);
-            }
-
-            if ($senderCreditUpi->available_credit < $request->amount) {
-                return $this->errorResponse("Insufficient balance", 400);
-            }
-
-            DB::transaction(function () use ($senderCreditUpi, $receiverBankAccount, $request) {
-                $receiverBankAccount->increment('amount', $request->amount);
-                $senderCreditUpi->decrement('available_credit', $request->amount);
-            });
-
-            return $this->successResponse([], "Send successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

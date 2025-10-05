@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BankController;
 use App\Http\Controllers\BankCreditUpiController;
+use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('login', [AuthController::class, 'login']);
@@ -39,5 +40,14 @@ Route::controller(BankCreditUpiController::class)
         function () {
             Route::get('bank/list', 'bankList');
             Route::get('bank/activate', 'activate');
+        }
+    );
+
+Route::controller(TransactionController::class)
+    ->middleware(['auth:sanctum'])
+    ->group(
+        function () {
+            Route::get('pay', 'sendMoney');
+            Route::get('credit-upi/pay', 'payWithCreditUpi');
         }
     );
