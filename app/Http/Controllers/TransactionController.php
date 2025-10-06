@@ -91,7 +91,7 @@ class TransactionController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse($validation->errors()->first(), 422);
             }
 
             if (empty($request->to_bank_account) && empty($request->upi_id)) {
@@ -163,7 +163,7 @@ class TransactionController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse($validation->errors()->first(), 422);
             }
 
             $senderCreditUpi = UserBankCreditUpi::where('upi_id', $request->credit_upi)->first();

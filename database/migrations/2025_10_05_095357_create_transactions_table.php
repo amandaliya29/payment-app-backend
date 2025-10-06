@@ -22,7 +22,6 @@ return new class extends Migration {
             $table->string('description', 255)->nullable();
             $table->timestamps();
 
-            $table->index('user_id', 'idx_user_id');
             $table->index('status', 'idx_status');
             $table->index('created_at', 'idx_created_at');
             $table->index('type', 'idx_type');

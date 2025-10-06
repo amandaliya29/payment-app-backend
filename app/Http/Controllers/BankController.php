@@ -68,7 +68,7 @@ class BankController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse($validation->errors()->first(), 422);
             }
 
             $userBankAccount = UserBankAccounts::firstOrNew([
@@ -113,7 +113,10 @@ class BankController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
             }
 
             $filePath = $this->upload('qr', 'image', 'private');
@@ -128,6 +131,30 @@ class BankController extends Controller
             }
 
             return $this->successResponse(['code' => $text], "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Check the balance of a specific bank account belonging to the authenticated user.
+     *
+     * @param int $id  The ID of the bank account to check.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function checkBalance($id)
+    {
+        try {
+            $account = UserBankAccounts::where('id', $id)
+                ->where('user_id', auth()->id())
+                ->first();
+
+            if (!$account) {
+                return $this->errorResponse("Not Found", 404);
+            }
+
+            return $this->successResponse(['amount' => $account->amount], "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

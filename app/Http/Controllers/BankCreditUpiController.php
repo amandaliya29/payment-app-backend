@@ -54,7 +54,7 @@ class BankCreditUpiController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 403);
+                return $this->errorResponse($validation->errors()->first(), 403);
             }
 
             $verifiedIdToken = $auth->verifyIdToken($request->token);
