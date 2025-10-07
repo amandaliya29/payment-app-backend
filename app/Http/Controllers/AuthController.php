@@ -36,7 +36,7 @@ class AuthController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 403);
+                return $this->errorResponse($validation->errors()->first(), 403);
             }
 
             $verifiedIdToken = $auth->verifyIdToken($request->token);
@@ -106,7 +106,7 @@ class AuthController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 403);
+                return $this->errorResponse($validation->errors()->first(), 403);
             }
 
             $search = $request->input('search');
@@ -210,7 +210,7 @@ class AuthController extends Controller
     public function profile()
     {
         try {
-            $bankAccounts = UserBankAccounts::where('user_id', auth()->id())->get();
+            $bankAccounts = UserBankAccounts::with('bank')->where('user_id', auth()->id())->get();
 
             return $this->successResponse([
                 'user' => auth()->user(),
@@ -242,7 +242,7 @@ class AuthController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 403);
+                return $this->errorResponse($validation->errors()->first(), 403);
             }
 
             $token = auth()->user()->currentAccessToken();

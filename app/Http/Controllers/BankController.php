@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Bank;
 use App\Models\UserBankAccounts;
+use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use Zxing\QrReader;
 
 class BankController extends Controller
@@ -44,7 +44,7 @@ class BankController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function saveBankDetails(Request $request)
+    public function saveBankDetails(Request $request, UpiService $upiService)
     {
         try {
             // validation
@@ -68,7 +68,7 @@ class BankController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse($validation->errors()->first(), 422);
             }
 
             $userBankAccount = UserBankAccounts::firstOrNew([
@@ -88,23 +88,10 @@ class BankController extends Controller
                 $userBankAccount->is_primary = true;
             }
 
-            $handles = ['@oksbi', '@okaxis', '@okicici', '@okhdfcbank', '@okyesbank'];
-
-            $baseUpi = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $request->account_holder_name));
-            if (empty($baseUpi)) {
-                $baseUpi = 'user';
-            }
-
-            $handle = $handles[array_rand($handles)];
-            do {
-                $randomDigits = rand(1, 9999);
-                $upiCandidate = $baseUpi . $randomDigits . $handle;
-            } while (UserBankAccounts::where('upi_id', $upiCandidate)->exists());
-
-            $userBankAccount->upi_id = $upiCandidate;
+            $userBankAccount->upi_id = $upiService->generate($request->account_number);
             $userBankAccount->save();
 
-            return $this->successResponse($userBankAccount, "Save successfully");
+            return $this->successResponse([], "Save successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
@@ -126,7 +113,10 @@ class BankController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 422);
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
             }
 
             $filePath = $this->upload('qr', 'image', 'private');
@@ -141,6 +131,30 @@ class BankController extends Controller
             }
 
             return $this->successResponse(['code' => $text], "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Check the balance of a specific bank account belonging to the authenticated user.
+     *
+     * @param int $id  The ID of the bank account to check.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function checkBalance($id)
+    {
+        try {
+            $account = UserBankAccounts::where('id', $id)
+                ->where('user_id', auth()->id())
+                ->first();
+
+            if (!$account) {
+                return $this->errorResponse("Not Found", 404);
+            }
+
+            return $this->successResponse(['amount' => $account->amount], "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

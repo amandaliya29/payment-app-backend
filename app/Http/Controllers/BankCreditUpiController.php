@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\UserBankAccounts;
 use App\Models\UserBankCreditUpi;
+use App\Services\UpiService;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -35,7 +37,7 @@ class BankCreditUpiController extends Controller
      *
      * @return JsonResponse Returns JSON response indicating success or failure.
      */
-    public function activate(Request $request, FirebaseAuth $auth)
+    public function activate(Request $request, FirebaseAuth $auth, UpiService $upiService)
     {
         try {
             // validation
@@ -52,12 +54,21 @@ class BankCreditUpiController extends Controller
 
             // validation error
             if ($validation->fails()) {
-                return $this->errorResponse("Validation Error", 403);
+                return $this->errorResponse($validation->errors()->first(), 403);
             }
 
-            $auth->verifyIdToken($request->token);
+            $verifiedIdToken = $auth->verifyIdToken($request->token);
+            $uid = $verifiedIdToken->claims()->get('sub');
+
+            if (auth()->user()->firebase_uid == $uid) {
+                throw new Exception("User not recognized");
+            }
+
+            $userBankAccount = UserBankAccounts::find($request->bank_account);
 
             $userBankCreditUpi = new UserBankCreditUpi();
+            $userBankCreditUpi->user_id = auth()->id();
+            $userBankCreditUpi->upi_id = $upiService->generate($userBankAccount->account_holder_name);
             $userBankCreditUpi->bank_account_id = $request->bank_account;
             $randomLimit = Arr::random($this->creditAmounts);
             $userBankCreditUpi->credit_limit = $randomLimit;
@@ -65,7 +76,7 @@ class BankCreditUpiController extends Controller
             $userBankCreditUpi->save();
 
             return $this->successResponse(
-                [],
+                $userBankAccount,
                 "Activate Successful"
             );
         } catch (FailedToVerifyToken $e) {
