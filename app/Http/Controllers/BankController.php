@@ -159,4 +159,28 @@ class BankController extends Controller
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
+    /**
+     * Retrieve the list of bank accounts for the authenticated user.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @throws \Throwable
+     */
+    public function accountList()
+    {
+        try {
+            $account = UserBankAccounts::with('bank')
+                ->where('user_id', auth()->id())
+                ->get();
+
+            if (!$account) {
+                return $this->errorResponse("Please add a bank account.", 404);
+            }
+
+            return $this->successResponse($account, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
 }
