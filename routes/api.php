@@ -51,5 +51,6 @@ Route::controller(TransactionController::class)
         function () {
             Route::get('pay', 'sendMoney');
             Route::get('credit-upi/pay', 'payWithCreditUpi');
+            Route::get('transactions/recent-users', 'getRecentTransactionUsers');
         }
     );
