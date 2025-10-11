@@ -344,4 +344,57 @@ class TransactionController extends Controller
         $transactions->setCollection($data);
         return response()->json($transactions);
     }
+
+    /**
+     * Get recent 20 users the authenticated user has transacted with.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRecentTransactionUsers()
+    {
+        $userId = auth()->id();
+
+        $userIds = Transaction::where(function ($query) use ($userId) {
+            $query->whereHas('senderBank', function ($q) use ($userId) {
+                $q->where('user_id', $userId);
+            })
+                ->orWhereHas('senderCreditUpi', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                })
+                ->orWhereHas('senderUpi', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                })
+                ->orWhereHas('receiverBank', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                });
+        })
+            ->with([
+                'senderBank.user',
+                'senderCreditUpi.user',
+                'senderUpi.user',
+                'receiverBank.user'
+            ])
+            ->latest()
+            ->get()
+            ->map(function ($tx) use ($userId) {
+                if ($tx->senderBank && $tx->senderBank->user_id != $userId) {
+                    return $tx->senderBank->user;
+                }
+                if ($tx->senderCreditUpi && $tx->senderCreditUpi->user_id != $userId) {
+                    return $tx->senderCreditUpi->user;
+                }
+                if ($tx->senderUpi && $tx->senderUpi->user_id != $userId) {
+                    return $tx->senderUpi->user;
+                }
+                if ($tx->receiverBank && $tx->receiverBank->user_id != $userId) {
+                    return $tx->receiverBank->user;
+                }
+                return null;
+            })
+            ->filter()
+            ->unique('id')
+            ->take(20);
+
+        return response()->json($userIds->values());
+    }
 }
