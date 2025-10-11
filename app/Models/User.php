@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Crypt;
 
 class User extends Authenticatable
 {
@@ -21,7 +22,10 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
-        'password',
+        'phone',
+        'firebase_uid',
+        'aadhar_number',
+        'pan_number',
     ];
 
     /**
@@ -55,5 +59,27 @@ class User extends Authenticatable
     public function bankAccounts()
     {
         return $this->hasMany(UserBankAccounts::class, 'user_id', 'id')->with('bank');
+    }
+
+    /**
+     * Encrypt Aadhaar number before saving to database.
+     *
+     * @param  string  $value
+     * @return void
+     */
+    public function setAadharNumberAttribute($value): void
+    {
+        $this->attributes['aadhar_number'] = Crypt::encryptString($value);
+    }
+
+    /**
+     * Decrypt Aadhaar number when retrieving from database.
+     *
+     * @param  string|null  $value
+     * @return string|null
+     */
+    public function getAadharNumberAttribute($value): ?string
+    {
+        return $value ? Crypt::decryptString($value) : null;
     }
 }
