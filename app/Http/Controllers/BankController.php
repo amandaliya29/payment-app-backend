@@ -58,17 +58,39 @@ class BankController extends Controller
                 'account_holder_name' => 'required|string|max:255',
                 'account_number' => [
                     'required',
-                    'digits_between:9,18'
+                    'digits_between:9,18',
+                    'unique:user_bank_accounts,account_number'
                 ],
                 'ifsc_code' => [
                     'required',
                     'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/'
-                ]
+                ],
+                'account_type' => 'required|in:saving,current,salary,fixed_deposit',
+                'pin_code' => [
+                    'required',
+                    'digits_between:4,6',
+                    'confirmed', // pin_code_confirmation must match
+                ],
             ]);
 
             // validation error
             if ($validation->fails()) {
                 return $this->errorResponse($validation->errors()->first(), 422);
+            }
+
+            $user = Auth::user();
+
+            $updated = false;
+            if (!$user->aadhar_number) {
+                $user->aadhar_number = $request->aadhaar_number;
+                $updated = true;
+            }
+            if (!$user->pan_number) {
+                $user->pan_number = $request->pan_number;
+                $updated = true;
+            }
+            if ($updated) {
+                $user->save();
             }
 
             $userBankAccount = UserBankAccounts::firstOrNew([
@@ -77,11 +99,11 @@ class BankController extends Controller
             ]);
 
             $userBankAccount->fill([
-                'aadhaar_number' => $request->aadhaar_number,
-                'pan_number' => $request->pan_number,
                 'account_holder_name' => $request->account_holder_name,
                 'account_number' => $request->account_number,
                 'ifsc_code' => $request->ifsc_code,
+                'account_type' => $request->account_type,
+                'pin_code' => $request->pin_code,
             ]);
 
             if (!UserBankAccounts::where('user_id', Auth::id())->exists()) {

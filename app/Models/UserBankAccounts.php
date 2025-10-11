@@ -18,8 +18,25 @@ class UserBankAccounts extends Model
         'account_holder_name',
         'account_number',
         'ifsc_code',
-        'aadhaar_number',
-        'pan_number',
+        'pin_code',
+    ];
+
+    /**
+     * The attributes that should be hidden for arrays or JSON serialization.
+     *
+     * @var array
+     */
+    protected $hidden = [
+        'pin_code',
+    ];
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'pin_code' => 'hashed',
     ];
 
     /**
@@ -40,28 +57,6 @@ class UserBankAccounts extends Model
      * @return string|null
      */
     public function getAccountNumberAttribute($value): ?string
-    {
-        return $value ? Crypt::decryptString($value) : null;
-    }
-
-    /**
-     * Encrypt Aadhaar number before saving to database.
-     *
-     * @param  string  $value
-     * @return void
-     */
-    public function setAadhaarNumberAttribute($value): void
-    {
-        $this->attributes['aadhaar_number'] = Crypt::encryptString($value);
-    }
-
-    /**
-     * Decrypt Aadhaar number when retrieving from database.
-     *
-     * @param  string|null  $value
-     * @return string|null
-     */
-    public function getAadhaarNumberAttribute($value): ?string
     {
         return $value ? Crypt::decryptString($value) : null;
     }

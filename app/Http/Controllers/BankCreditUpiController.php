@@ -50,6 +50,11 @@ class BankCreditUpiController extends Controller
                         $query->where('user_id', auth()->id());
                     }),
                 ],
+                'pin_code' => [
+                    'required',
+                    'digits_between:4,6',
+                    'confirmed', // pin_code_confirmation must match
+                ],
             ]);
 
             // validation error
@@ -73,6 +78,7 @@ class BankCreditUpiController extends Controller
             $randomLimit = Arr::random($this->creditAmounts);
             $userBankCreditUpi->credit_limit = $randomLimit;
             $userBankCreditUpi->available_credit = $randomLimit;
+            $userBankCreditUpi->pin_code = $request->pin_code;
             $userBankCreditUpi->save();
 
             return $this->successResponse(
