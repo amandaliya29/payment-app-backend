@@ -7,6 +7,7 @@ use App\Models\UserBankAccounts;
 use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Zxing\QrReader;
@@ -161,19 +162,47 @@ class BankController extends Controller
     /**
      * Check the balance of a specific bank account belonging to the authenticated user.
      *
-     * @param int $id  The ID of the bank account to check.
+     * This method verifies the user's identity and pin code before returning
+     * the balance of the requested bank account. It ensures only the owner
+     * of the account can access this information.
+     *
+     * @param \Illuminate\Http\Request $request
+     *     The incoming request containing:
+     *     - `account_id` (int): The ID of the user's bank account.
+     *     - `pin_code` (int): The 4–6 digit PIN code for verification.
      *
      * @return \Illuminate\Http\JsonResponse
+     *     A JSON response containing:
+     *     - On success: The account balance.
+     *     - On failure: An appropriate error message and HTTP status code.
      */
-    public function checkBalance($id)
+    public function checkBalance(Request $request)
     {
         try {
-            $account = UserBankAccounts::where('id', $id)
+            // validation
+            $validation = Validator::make($request->all(), [
+                'account_id' => 'required|integer|exists:user_bank_accounts,id',
+                'pin_code' => 'required|digits_between:4,6',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
+            }
+
+            $account = UserBankAccounts::where('id', $request->account_id)
                 ->where('user_id', auth()->id())
                 ->first();
 
             if (!$account) {
                 return $this->errorResponse("Not Found", 404);
+            }
+
+            if (!Hash::check($request->pin_code, $account->pin_code)) {
+                return $this->errorResponse("Invalid PIN code", 401);
             }
 
             return $this->successResponse(['amount' => $account->amount], "Fetch successfully");

@@ -30,7 +30,7 @@ Route::controller(BankController::class)
             Route::get('list', 'list');
             Route::get('account/list', 'accountList');
             Route::post('details', 'saveBankDetails');
-            Route::get('balance/{account_id}', 'checkBalance');
+            Route::post('balance', 'checkBalance');
             Route::post('qr/scan', 'scan');
         }
     );
