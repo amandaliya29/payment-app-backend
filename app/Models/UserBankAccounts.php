@@ -27,7 +27,8 @@ class UserBankAccounts extends Model
      * @var array
      */
     protected $hidden = [
-        'pin_code',
+        'amount',
+        'pin_code'
     ];
 
     /**
