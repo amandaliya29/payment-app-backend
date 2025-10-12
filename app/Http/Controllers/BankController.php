@@ -109,7 +109,7 @@ class BankController extends Controller
                 'ifsc_code' => $request->ifsc_code,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
-                'pin_code_length' => strlen($request->pin_code),
+                'pin_code_length' => strlen((string) $request->pin_code),
             ]);
 
             if (!UserBankAccounts::where('user_id', Auth::id())->exists()) {
@@ -208,7 +208,7 @@ class BankController extends Controller
             }
 
             if (!Hash::check($request->pin_code, $account->pin_code)) {
-                return $this->errorResponse("Invalid PIN code", 401);
+                return $this->errorResponse("Invalid PIN code", 403);
             }
 
             $account->makeVisible('amount');

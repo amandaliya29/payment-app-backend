@@ -19,6 +19,7 @@ class UserBankAccounts extends Model
         'account_number',
         'ifsc_code',
         'pin_code',
+        'pin_code_length',
     ];
 
     /**
