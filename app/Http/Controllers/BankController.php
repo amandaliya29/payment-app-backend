@@ -8,6 +8,7 @@ use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Zxing\QrReader;
@@ -103,11 +104,12 @@ class BankController extends Controller
             ]);
 
             $userBankAccount->fill([
-                'account_holder_name' => $request->account_holder_name,
-                'account_number' => $request->account_number ?: $user->name,
+                'account_holder_name' => $request->account_holder_name ?: $user->name,
+                'account_number' => $request->account_number,
                 'ifsc_code' => $request->ifsc_code,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
+                'pin_code_length' => strlen($request->pin_code),
             ]);
 
             if (!UserBankAccounts::where('user_id', Auth::id())->exists()) {
@@ -119,6 +121,7 @@ class BankController extends Controller
 
             return $this->successResponse([], "Save successfully");
         } catch (\Throwable $th) {
+            Log::info($th->getMessage());
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
