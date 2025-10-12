@@ -48,15 +48,20 @@ class BankController extends Controller
     public function saveBankDetails(Request $request, UpiService $upiService)
     {
         try {
+            $user = Auth::user();
+
             // validation
             $validation = Validator::make($request->all(), [
                 'bank_id' => 'required|integer|exists:banks,id',
-                'aadhaar_number' => 'required|digits:12',
-                'pan_number' => [
-                    'required',
-                    'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/'
+                'aadhaar_number' => [
+                    $user->aadhar_number ? 'nullable' : 'required',
+                    'digits:12',
                 ],
-                'account_holder_name' => 'required|string|max:255',
+                'pan_number' => [
+                    $user->pan_number ? 'nullable' : 'required',
+                    'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/',
+                ],
+                'account_holder_name' => 'nullable|string|max:255',
                 'account_number' => [
                     'required',
                     'digits_between:9,18',
@@ -79,8 +84,6 @@ class BankController extends Controller
                 return $this->errorResponse($validation->errors()->first(), 422);
             }
 
-            $user = Auth::user();
-
             $updated = false;
             if (!$user->aadhar_number) {
                 $user->aadhar_number = $request->aadhaar_number;
@@ -101,7 +104,7 @@ class BankController extends Controller
 
             $userBankAccount->fill([
                 'account_holder_name' => $request->account_holder_name,
-                'account_number' => $request->account_number,
+                'account_number' => $request->account_number ?: $user->name,
                 'ifsc_code' => $request->ifsc_code,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
@@ -205,6 +208,7 @@ class BankController extends Controller
                 return $this->errorResponse("Invalid PIN code", 401);
             }
 
+            $account->makeVisible('amount');
             return $this->successResponse(['amount' => $account->amount], "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
@@ -223,7 +227,14 @@ class BankController extends Controller
         try {
             $account = UserBankAccounts::with('bank')
                 ->where('user_id', auth()->id())
-                ->get();
+                ->get()
+                ->map(function ($account) {
+                    // Mask account number to show only last 4 digits
+                    if (!empty($account->account_number)) {
+                        $account->account_number = 'XXXX XXXX ' . substr($account->account_number, -4);
+                    }
+                    return $account;
+                });
 
             if (!$account) {
                 return $this->errorResponse("Please add a bank account.", 404);
