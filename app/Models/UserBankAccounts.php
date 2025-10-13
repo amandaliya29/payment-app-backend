@@ -82,4 +82,21 @@ class UserBankAccounts extends Model
     {
         return $this->belongsTo(UserBankCreditUpi::class, 'id', 'bank_account_id');
     }
+
+    /**
+     * Set the account type in capitalized format.
+     * 
+     * This mutator ensures that each word in the account type is capitalized.
+     * Underscore-separated words (e.g., "fixed_deposit") will become "Fixed_Deposit".
+     *
+     * @param string $value The account type value to be stored.
+     * @return void
+     */
+    public function setAccountTypeAttribute($value)
+    {
+        // Split by underscore, capitalize each word, then join with underscore
+        $words = explode('_', strtolower($value));
+        $words = array_map('ucfirst', $words);
+        $this->attributes['account_type'] = implode('_', $words);
+    }
 }

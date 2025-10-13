@@ -8,7 +8,6 @@ use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Zxing\QrReader;
@@ -94,6 +93,10 @@ class BankController extends Controller
                 $user->pan_number = $request->pan_number;
                 $updated = true;
             }
+            if (!$user->name && $request->account_holder_name) {
+                $user->name = $request->account_holder_name;
+                $updated = true;
+            }
             if ($updated) {
                 $user->save();
             }
@@ -104,7 +107,7 @@ class BankController extends Controller
             ]);
 
             $userBankAccount->fill([
-                'account_holder_name' => $request->account_holder_name ?: $user->name,
+                'account_holder_name' => $user->name,
                 'account_number' => $request->account_number,
                 'ifsc_code' => $request->ifsc_code,
                 'account_type' => $request->account_type,
@@ -121,7 +124,6 @@ class BankController extends Controller
 
             return $this->successResponse([], "Save successfully");
         } catch (\Throwable $th) {
-            Log::info($th->getMessage());
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
@@ -238,10 +240,6 @@ class BankController extends Controller
                     }
                     return $account;
                 });
-
-            if (!$account) {
-                return $this->errorResponse("Please add a bank account.", 404);
-            }
 
             return $this->successResponse($account, "Fetch successfully");
         } catch (\Throwable $th) {
