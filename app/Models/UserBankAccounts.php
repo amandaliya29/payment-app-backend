@@ -84,19 +84,19 @@ class UserBankAccounts extends Model
     }
 
     /**
-     * Set the account type in capitalized format.
+     * Get the account type in capitalized format.
      * 
-     * This mutator ensures that each word in the account type is capitalized.
-     * Underscore-separated words (e.g., "fixed_deposit") will become "Fixed_Deposit".
+     * This accessor ensures that each word in the account type is capitalized
+     * and underscores are replaced with spaces for display purposes.
      *
-     * @param string $value The account type value to be stored.
-     * @return void
+     * @param string $value The stored account type value.
+     * @return string
      */
-    public function setAccountTypeAttribute($value)
+    public function getAccountTypeAttribute($value)
     {
-        // Split by underscore, capitalize each word, then join with underscore
+        // Split by underscore, capitalize each word, then join with space
         $words = explode('_', strtolower($value));
         $words = array_map('ucfirst', $words);
-        $this->attributes['account_type'] = implode('_', $words);
+        return implode(' ', $words); // e.g., "fixed_deposit" -> "Fixed Deposit"
     }
 }
