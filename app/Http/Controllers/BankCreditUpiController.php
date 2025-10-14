@@ -99,19 +99,19 @@ class BankCreditUpiController extends Controller
      *
      * This method retrieves the user's bank accounts along with related bank
      * and bankCreditUpi details, masks the account number to show only
-     * the last 4 digits (e.g., **** **** 1234), and returns the formatted data.
+     * the last 4 digits (e.g., XXXX XXXX 1234), and returns the formatted data.
      */
     public function bankList()
     {
         try {
             $userBankAccounts = UserBankAccounts::with(['bank', 'bankCreditUpi'])
                 ->where('user_id', auth()->id())
-                ->select(['account_number', 'upi_id'])
+                ->select(['id', 'bank_id', 'account_number'])
                 ->get()
                 ->map(function ($account) {
                     // Mask account number to show only last 4 digits
                     if (!empty($account->account_number)) {
-                        $account->account_number = '**** **** ' . substr($account->account_number, -4);
+                        $account->account_number = 'XXXX XXXX ' . substr($account->account_number, -4);
                     }
                     return $account;
                 });
