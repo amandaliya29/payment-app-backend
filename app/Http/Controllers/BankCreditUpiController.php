@@ -50,11 +50,6 @@ class BankCreditUpiController extends Controller
                         $query->where('user_id', auth()->id());
                     }),
                 ],
-                'pin_code' => [
-                    'required',
-                    'digits_between:4,6',
-                    'confirmed', // pin_code_confirmation must match
-                ],
             ]);
 
             // validation error
@@ -78,7 +73,6 @@ class BankCreditUpiController extends Controller
             $randomLimit = Arr::random($this->creditAmounts);
             $userBankCreditUpi->credit_limit = $randomLimit;
             $userBankCreditUpi->available_credit = $randomLimit;
-            $userBankCreditUpi->pin_code = $request->pin_code;
             $userBankCreditUpi->save();
 
             return $this->successResponse(
@@ -87,6 +81,65 @@ class BankCreditUpiController extends Controller
             );
         } catch (FailedToVerifyToken $e) {
             return $this->errorResponse("OTP not verified", 401);
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Save or update the PIN code for a user's linked bank credit/UPI account.
+     *
+     * This method validates the provided request to ensure:
+     *  - The specified bank_credit_upi ID exists and belongs to the authenticated user.
+     *  - The provided pin_code is between 4–6 digits and matches its confirmation field.
+     *
+     * Upon successful validation, the pin_code is securely hashed and saved
+     * to the corresponding UserBankCreditUpi record.
+     *
+     * @param \Illuminate\Http\Request $request
+     *     The HTTP request containing:
+     *       - bank_credit_upi (int): The ID of the user's bank credit/UPI record.
+     *       - pin_code (string): The new PIN code to be set.
+     *       - pin_code_confirmation (string): The confirmation for the new PIN.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *     Returns a success response on completion or an error response on validation failure
+     *     or internal server error.
+     *
+     * @throws \Throwable
+     *     Throws an exception if any unexpected error occurs during execution.
+     */
+    private function savePin(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'bank_credit_upi' => [
+                    'required',
+                    Rule::exists('user_bank_credit_upis', 'id')->where(function ($query) {
+                        $query->where('user_id', auth()->id());
+                    }),
+                ],
+                'pin_code' => [
+                    'required',
+                    'digits_between:4,6',
+                    'confirmed', // pin_code_confirmation must match
+                ],
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 403);
+            }
+
+            $userBankCreditUpi = UserBankCreditUpi::find($request->bank_credit_upi);
+            $userBankCreditUpi->pin_code = $request->pin_code;
+            $userBankCreditUpi->save();
+
+            return $this->successResponse(
+                [],
+                "Pin set Successful"
+            );
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
@@ -113,6 +166,12 @@ class BankCreditUpiController extends Controller
                     if (!empty($account->account_number)) {
                         $account->account_number = 'XXXX XXXX ' . substr($account->account_number, -4);
                     }
+
+                    // Add status based on pin_code presence
+                    if ($account->bankCreditUpi) {
+                        $account->bankCreditUpi->status = $account->bankCreditUpi->pin_code ? 'active' : 'inactive';
+                    }
+
                     return $account;
                 });
 
