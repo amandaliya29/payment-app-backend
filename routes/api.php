@@ -41,7 +41,8 @@ Route::controller(BankCreditUpiController::class)
     ->group(
         function () {
             Route::get('bank/list', 'bankList');
-            Route::get('bank/activate', 'activate');
+            Route::get('activate', 'activate');
+            Route::get('save/pin', 'savePin');
         }
     );
 
