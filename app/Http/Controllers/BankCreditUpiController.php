@@ -90,7 +90,7 @@ class BankCreditUpiController extends Controller
                 "Activate Successful"
             );
         } catch (FailedToVerifyToken $e) {
-            return $this->errorResponse("OTP not verified", code: 403);
+            return $this->errorResponse("OTP not verified", 403);
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
