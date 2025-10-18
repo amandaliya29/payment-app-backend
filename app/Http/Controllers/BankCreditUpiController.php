@@ -60,16 +60,26 @@ class BankCreditUpiController extends Controller
             $verifiedIdToken = $auth->verifyIdToken($request->token);
             $uid = $verifiedIdToken->claims()->get('sub');
 
-            if (auth()->user()->firebase_uid == $uid) {
-                throw new Exception("User not recognized");
+            if (auth()->user()->firebase_uid != $uid) {
+                return $this->errorResponse("User not recognized", 401);
             }
 
-            $userBankAccount = UserBankAccounts::find($request->bank_account);
+            $userBankAccount = UserBankAccounts::findOrFail($request->bank_account);
+
+            // Prevent duplicate activation
+            $existingUpi = UserBankCreditUpi::where([
+                'user_id' => auth()->id(),
+                'bank_account_id' => $userBankAccount->id,
+            ])->exists();
+
+            if ($existingUpi) {
+                return $this->errorResponse('Already activated', 409);
+            }
 
             $userBankCreditUpi = new UserBankCreditUpi();
             $userBankCreditUpi->user_id = auth()->id();
             $userBankCreditUpi->upi_id = $upiService->generate($userBankAccount->account_holder_name);
-            $userBankCreditUpi->bank_account_id = $request->bank_account;
+            $userBankCreditUpi->bank_account_id = $userBankAccount->id;
             $randomLimit = Arr::random($this->creditAmounts);
             $userBankCreditUpi->credit_limit = $randomLimit;
             $userBankCreditUpi->available_credit = $randomLimit;
@@ -80,7 +90,7 @@ class BankCreditUpiController extends Controller
                 "Activate Successful"
             );
         } catch (FailedToVerifyToken $e) {
-            return $this->errorResponse("OTP not verified", 401);
+            return $this->errorResponse("OTP not verified", code: 403);
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
