@@ -86,7 +86,7 @@ class BankCreditUpiController extends Controller
             $userBankCreditUpi->save();
 
             return $this->successResponse(
-                $userBankAccount,
+                $userBankCreditUpi,
                 "Activate Successful"
             );
         } catch (FailedToVerifyToken $e) {
