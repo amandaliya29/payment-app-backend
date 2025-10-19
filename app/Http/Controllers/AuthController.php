@@ -119,6 +119,7 @@ class AuthController extends Controller
             ])
                 ->where(function ($query) use ($search) {
                     $query->where('phone', 'LIKE', "%{$search}%")
+                        ->orWhere('name', 'LIKE', "%{$search}%")
                         ->whereHas('bankAccounts', fn($q) => $q->where('is_primary', 1))
                         ->orWhereHas('bankAccounts', fn($q) => $q->where('upi_id', 'LIKE', "%{$search}%"));
                 })
