@@ -17,7 +17,7 @@ Route::controller(AuthController::class)
         function () {
             Route::get('get/{id}', 'get');
             Route::get('profile', 'profile');
-            Route::get('search', 'searchUsers');
+            Route::post('search', 'searchUsers');
             Route::post('fcm/update', 'updateFcmToken');
         }
     );

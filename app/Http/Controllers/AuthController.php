@@ -112,27 +112,15 @@ class AuthController extends Controller
             $search = $request->input('search');
 
             $users = User::with([
-                'bankAccounts.bank' => function ($query) {
-                    $query->select('id', 'name');
-                },
-                'bankAccounts' => function ($query) {
-                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'aadhaar_number', 'pan_number', 'is_primary')
-                        ->whereNotNull('aadhaar_number')
-                        ->whereNotNull('pan_number');
+                'bankAccounts' => function ($q) {
+                    $q->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'is_primary')
+                        ->with('bank:id,name');
                 }
             ])
                 ->where(function ($query) use ($search) {
-                    $query->where(function ($q) use ($search) {
-                        $q->where('phone', 'LIKE', "%{$search}%")
-                            ->whereHas('bankAccounts', function ($q2) {
-                                $q2->where('is_primary', 1);
-                            });
-                    })
-                        ->orWhereHas('bankAccounts', function ($q) use ($search) {
-                            $q->where('upi_id', 'LIKE', "%{$search}%")
-                                ->whereNotNull('aadhaar_number')
-                                ->whereNotNull('pan_number');
-                        });
+                    $query->where('phone', 'LIKE', "%{$search}%")
+                        ->whereHas('bankAccounts', fn($q) => $q->where('is_primary', 1))
+                        ->orWhereHas('bankAccounts', fn($q) => $q->where('upi_id', 'LIKE', "%{$search}%"));
                 })
                 ->get();
 

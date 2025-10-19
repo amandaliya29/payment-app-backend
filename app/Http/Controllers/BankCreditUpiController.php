@@ -119,7 +119,7 @@ class BankCreditUpiController extends Controller
      * @throws \Throwable
      *     Throws an exception if any unexpected error occurs during execution.
      */
-    private function savePin(Request $request)
+    public function savePin(Request $request)
     {
         try {
             // validation
