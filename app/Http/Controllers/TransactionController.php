@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\UserBankAccounts;
+use App\Services\ApplicationNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -13,6 +15,18 @@ use App\Models\UserBankCreditUpi;
 
 class TransactionController extends Controller
 {
+    protected $notificationService;
+
+    /**
+     * TransactionController constructor.
+     *
+     * @param ApplicationNotificationService $notificationService
+     */
+    public function __construct(ApplicationNotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
+
     /**
      * Store a transaction record.
      *
@@ -33,9 +47,10 @@ class TransactionController extends Controller
     {
         try {
             $transaction = new Transaction();
+            $transaction->transaction_id = $payload->transaction_id ?? $this->generateTransactionId();
             $transaction->type = $payload->type ?? 'bank';
             $transaction->amount = $payload->amount ?? 0;
-            $transaction->status = $payload->status;
+            $transaction->status = $status;
             $transaction->description = $payload->description ?? null;
 
             if (!empty($payload->from_account_id)) {
@@ -60,6 +75,15 @@ class TransactionController extends Controller
         }
     }
 
+    /**
+     * Generate a unique transaction ID.
+     *
+     * @return string
+     */
+    public function generateTransactionId(): string
+    {
+        return 'TXN' . now()->format('YmdHis') . mt_rand(1000, 9999);
+    }
 
     /**
      * Transfer money between bank accounts or via UPI.
@@ -74,29 +98,32 @@ class TransactionController extends Controller
      */
     public function sendMoney(Request $request)
     {
+        $transactionId = $this->generateTransactionId();
+
+        // validation
+        $validation = Validator::make($request->all(), [
+            'amount' => 'required|numeric|between:0,999999999999.99',
+            'from_bank_account' => [
+                'required',
+                Rule::exists('user_bank_accounts', 'id')->where(function ($query) {
+                    $query->where('user_id', auth()->id());
+                }),
+            ],
+            'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
+            'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        // validation error
+        if ($validation->fails()) {
+            return $this->errorResponse($validation->errors()->first(), 422);
+        }
+
+        if (empty($request->to_bank_account) && empty($request->upi_id)) {
+            return $this->errorResponse("Receiver account or UPI ID is required", 422);
+        }
+
         try {
-            // validation
-            $validation = Validator::make($request->all(), [
-                'amount' => 'required|numeric|between:0,999999999999.99',
-                'from_bank_account' => [
-                    'required',
-                    Rule::exists('user_bank_accounts', 'id')->where(function ($query) {
-                        $query->where('user_id', auth()->id());
-                    }),
-                ],
-                'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
-                'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
-                'description' => 'nullable|string|max:255',
-            ]);
-
-            // validation error
-            if ($validation->fails()) {
-                return $this->errorResponse($validation->errors()->first(), 422);
-            }
-
-            if (empty($request->to_bank_account) && empty($request->upi_id)) {
-                return $this->errorResponse("Receiver account or UPI ID is required", 422);
-            }
 
             $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
                 ->orWhere('upi_id', $request->upi_id)
@@ -111,11 +138,12 @@ class TransactionController extends Controller
                 return $this->errorResponse("Insufficient balance", 400);
             }
 
-            DB::transaction(function () use ($senderBankAccount, $receiverBankAccount, $request) {
+            DB::transaction(function () use ($senderBankAccount, $receiverBankAccount, $transactionId, $request) {
                 $receiverBankAccount->increment('amount', $request->amount);
                 $senderBankAccount->decrement('amount', $request->amount);
 
                 $this->transaction((object) [
+                    'transaction_id' => $transactionId,
                     'type' => 'bank',
                     'amount' => $request->amount,
                     'description' => $request->description,
@@ -125,16 +153,34 @@ class TransactionController extends Controller
                 ]);
             });
 
+            $receiver = User::find($receiverBankAccount->user_id);
+
+            $title = "Money Received";
+            $message = "You received ₹{$request->amount} from " . auth()->user()->name;
+
+            $notificationData = [
+                'screen' => 'TransactionSuccessScreen',
+                'transaction_id' => $transactionId,
+            ];
+
+            $this->notificationService->sendNotificationToCurrentToken(
+                $receiver->id,
+                $title,
+                $message,
+                $notificationData
+            );
+
             return $this->successResponse([], "Send successfully");
         } catch (\Throwable $th) {
             $this->transaction((object) [
+                'transaction_id' => $transactionId,
                 'type' => 'bank',
                 'amount' => $request->amount,
                 'description' => $request->description,
                 'from_account_id' => $request->from_bank_account,
                 'to_account_id' => $request->to_bank_account ?? null,
                 'to_upi_id' => $request->upi_id ?? null,
-            ]);
+            ], 'failed');
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
@@ -151,20 +197,23 @@ class TransactionController extends Controller
      */
     public function payWithCreditUpi(Request $request)
     {
-        try {
-            // validation
-            $validation = Validator::make($request->all(), [
-                'amount' => 'required|numeric|between:0,999999999999.99',
-                'credit_upi' => 'required|exists:user_bank_credit_upis,upi_id',
-                'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
-                'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
-                'description' => 'nullable|string|max:255',
-            ]);
+        $transactionId = $this->generateTransactionId();
 
-            // validation error
-            if ($validation->fails()) {
-                return $this->errorResponse($validation->errors()->first(), 422);
-            }
+        // validation
+        $validation = Validator::make($request->all(), [
+            'amount' => 'required|numeric|between:0,999999999999.99',
+            'credit_upi' => 'required|exists:user_bank_credit_upis,upi_id',
+            'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
+            'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
+            'description' => 'nullable|string|max:255',
+        ]);
+
+        // validation error
+        if ($validation->fails()) {
+            return $this->errorResponse($validation->errors()->first(), 422);
+        }
+
+        try {
 
             $senderCreditUpi = UserBankCreditUpi::where('upi_id', $request->credit_upi)->first();
 
@@ -188,11 +237,12 @@ class TransactionController extends Controller
                 return $this->errorResponse("Insufficient balance", 400);
             }
 
-            DB::transaction(function () use ($senderCreditUpi, $receiverBankAccount, $request) {
+            DB::transaction(function () use ($senderCreditUpi, $receiverBankAccount, $transactionId, $request) {
                 $receiverBankAccount->increment('amount', $request->amount);
                 $senderCreditUpi->decrement('available_credit', $request->amount);
 
                 $this->transaction((object) [
+                    'transaction_id' => $transactionId,
                     'type' => 'credit_upi',
                     'amount' => $request->amount,
                     'description' => $request->description,
@@ -202,9 +252,27 @@ class TransactionController extends Controller
                 ]);
             });
 
+            $receiver = User::find($receiverBankAccount->user_id);
+
+            $title = "Money Received";
+            $message = "You received ₹{$request->amount} from " . auth()->user()->name;
+
+            $notificationData = [
+                'screen' => 'TransactionSuccessScreen',
+                'transaction_id' => $transactionId,
+            ];
+
+            $this->notificationService->sendNotificationToCurrentToken(
+                $receiver->id,
+                $title,
+                $message,
+                $notificationData
+            );
+
             return $this->successResponse([], "Send successfully");
         } catch (\Throwable $th) {
             $this->transaction((object) [
+                'transaction_id' => $transactionId,
                 'type' => 'credit_upi',
                 'amount' => $request->amount,
                 'description' => $request->description,
