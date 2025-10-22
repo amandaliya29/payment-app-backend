@@ -412,4 +412,31 @@ class TransactionController extends Controller
         $transactions->setCollection($data);
         return response()->json($transactions);
     }
+
+    /**
+     * Retrieve a specific transaction by its transaction ID.
+     *
+     * This method fetches a transaction record along with its related sender and receiver
+     * bank or UPI details based on the provided transaction ID.
+     *
+     * @param  string|int  $id  The unique transaction identifier.
+     * @return \Illuminate\Http\JsonResponse  JSON response containing transaction data or an error message.
+     *
+     * @throws \Throwable
+     */
+    public function getTransaction($id)
+    {
+        try {
+            $transaction = Transaction::with(['senderBank', 'receiverBank', 'senderCreditUpi', 'senderUpi'])
+                ->where('transaction_id', $id)->first();
+
+            if (!$transaction) {
+                return $this->errorResponse("Not Found", 404);
+            }
+
+            return $this->successResponse($transaction, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
 }
