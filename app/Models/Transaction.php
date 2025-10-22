@@ -79,6 +79,16 @@ class Transaction extends Model
      */
     public function senderUpi(): BelongsTo
     {
-        return $this->belongsTo(UserBankCreditUpi::class, 'from_upi_id', 'upi_id')->with('user');
+        return $this->belongsTo(UserBankAccounts::class, 'from_upi_id', 'upi_id')->with('user');
+    }
+
+    /**
+     * Get the sender's UPI details (mapped from from_upi_id).
+     *
+     * @return BelongsTo<\App\Models\UserBankCreditUpi, self>
+     */
+    public function receiverUpi(): BelongsTo
+    {
+        return $this->belongsTo(UserBankAccounts::class, 'to_upi_id', 'upi_id')->with('user');
     }
 }

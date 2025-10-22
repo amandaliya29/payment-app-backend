@@ -134,6 +134,14 @@ class TransactionController extends Controller
             }
 
             $senderBankAccount = UserBankAccounts::find($request->from_bank_account);
+            if (!$senderBankAccount) {
+                return $this->errorResponse('Sender bank account not found', 404);
+            }
+
+            if ($receiverBankAccount->id == $senderBankAccount->id) {
+                return $this->errorResponse("Invalid receiver account", 400);
+            }
+
             if ($senderBankAccount->amount < $request->amount) {
                 return $this->errorResponse("Insufficient balance", 400);
             }
@@ -427,11 +435,44 @@ class TransactionController extends Controller
     public function getTransaction($id)
     {
         try {
-            $transaction = Transaction::with(['senderBank', 'receiverBank', 'senderCreditUpi', 'senderUpi'])
-                ->where('transaction_id', $id)->first();
+            $transaction = Transaction::with([
+                'senderBank.user',
+                'receiverBank.user',
+                'senderCreditUpi.user',
+                'senderUpi.user',
+                'receiverUpi.user'
+            ])->where('transaction_id', $id)->first();
 
             if (!$transaction) {
                 return $this->errorResponse("Not Found", 404);
+            }
+
+            $relations = [
+                'senderBank',
+                'receiverBank',
+                'senderCreditUpi',
+                'senderUpi',
+                'receiverUpi',
+            ];
+
+            foreach ($relations as $relation) {
+                if ($transaction->$relation) {
+                    $accountNumber = $transaction->$relation->account_number;
+                    if ($accountNumber && strlen($accountNumber) > 4) {
+                        $transaction->$relation->account_number = substr($accountNumber, -4);
+                    }
+
+                    if ($transaction->$relation->user) {
+                        $transaction->$relation->user->makeHidden([
+                            'firebase_uid',
+                            'aadhar_number',
+                            'pan_number',
+                            'email',
+                            'updated_at',
+                            'created_at'
+                        ]);
+                    }
+                }
             }
 
             return $this->successResponse($transaction, "Fetch successfully");
