@@ -101,12 +101,11 @@ class BankController extends Controller
                 $user->save();
             }
 
-            $userBankAccount = UserBankAccounts::firstOrNew([
-                'user_id' => Auth::id(),
-                'bank_id' => $request->bank_id,
-            ]);
+            $userBankAccount = new UserBankAccounts();
 
             $userBankAccount->fill([
+                'user_id' => Auth::id(),
+                'bank_id' => $request->bank_id,
                 'account_holder_name' => $user->name,
                 'account_number' => $request->account_number,
                 'ifsc_code' => $request->ifsc_code,
