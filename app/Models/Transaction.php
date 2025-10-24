@@ -49,7 +49,7 @@ class Transaction extends Model
      */
     public function senderBank(): BelongsTo
     {
-        return $this->belongsTo(UserBankAccounts::class, 'from_account_id')->with('user');
+        return $this->belongsTo(UserBankAccounts::class, 'from_account_id')->with(['user', 'bank']);
     }
 
     /**
@@ -59,7 +59,7 @@ class Transaction extends Model
      */
     public function receiverBank(): BelongsTo
     {
-        return $this->belongsTo(UserBankAccounts::class, 'to_account_id')->with('user');
+        return $this->belongsTo(UserBankAccounts::class, 'to_account_id')->with(['user', 'bank']);
     }
 
     /**
@@ -69,26 +69,26 @@ class Transaction extends Model
      */
     public function senderCreditUpi(): BelongsTo
     {
-        return $this->belongsTo(UserBankCreditUpi::class, 'from_upi_id', 'upi_id')->with('user');
+        return $this->belongsTo(UserBankCreditUpi::class, 'from_upi_id', 'upi_id')->with(['user', 'bank']);
     }
 
     /**
      * Get the sender's UPI details (mapped from from_upi_id).
      *
-     * @return BelongsTo<\App\Models\UserBankCreditUpi, self>
+     * @return BelongsTo<\App\Models\UserBankAccounts, self>
      */
     public function senderUpi(): BelongsTo
     {
-        return $this->belongsTo(UserBankAccounts::class, 'from_upi_id', 'upi_id')->with('user');
+        return $this->belongsTo(UserBankAccounts::class, 'from_upi_id', 'upi_id')->with(['user', 'bank']);
     }
 
     /**
-     * Get the sender's UPI details (mapped from from_upi_id).
+     * Get the receiver's UPI details (mapped from from_upi_id).
      *
-     * @return BelongsTo<\App\Models\UserBankCreditUpi, self>
+     * @return BelongsTo<\App\Models\UserBankAccounts, self>
      */
     public function receiverUpi(): BelongsTo
     {
-        return $this->belongsTo(UserBankAccounts::class, 'to_upi_id', 'upi_id')->with('user');
+        return $this->belongsTo(UserBankAccounts::class, 'to_upi_id', 'upi_id')->with(['user', 'bank']);
     }
 }

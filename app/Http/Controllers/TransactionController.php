@@ -437,10 +437,13 @@ class TransactionController extends Controller
         try {
             $transaction = Transaction::with([
                 'senderBank.user',
+                'senderBank.bank',
                 'receiverBank.user',
+                'receiverBank.bank',
                 'senderCreditUpi.user',
-                'senderUpi.user',
-                'receiverUpi.user'
+                'senderCreditUpi.bank',
+                'receiverUpi.user',
+                'receiverUpi.bank',
             ])->where('transaction_id', $id)->first();
 
             if (!$transaction) {
@@ -451,7 +454,6 @@ class TransactionController extends Controller
                 'senderBank',
                 'receiverBank',
                 'senderCreditUpi',
-                'senderUpi',
                 'receiverUpi',
             ];
 
@@ -472,10 +474,42 @@ class TransactionController extends Controller
                             'created_at'
                         ]);
                     }
+
+                    if ($relation === 'senderCreditUpi') {
+                        $transaction->$relation->makeHidden([
+                            'credit_limit',
+                            'available_credit'
+                        ]);
+                    }
                 }
             }
 
-            return $this->successResponse($transaction, "Fetch successfully");
+            $authUserId = auth()->id();
+
+            $roles = [
+                'sender' => [$transaction->senderBank, $transaction->senderCreditUpi],
+                'receiver' => [$transaction->receiverBank, $transaction->receiverUpi],
+            ];
+
+            $authRole = null;
+
+            foreach ($roles as $role => $sources) {
+                foreach ($sources as $source) {
+                    if ($source && $source->user_id === $authUserId) {
+                        $authRole = $role;
+                        break 2;
+                    }
+                }
+            }
+
+            if (!$authRole) {
+                return $this->errorResponse("Invalid transaction", 400);
+            }
+
+            $response = $transaction->toArray();
+            $response['auth_role'] = $authRole;
+
+            return $this->successResponse($response, "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
