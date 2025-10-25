@@ -221,7 +221,7 @@ class AuthController extends Controller
 
             return $this->successResponse($user->toArray(), "User fetched successfully (via User ID)");
         } catch (\Throwable $th) {
-            return $this->errorResponse($th->getMessage(), 500);
+            return $this->errorResponse("Internal Server Error", 500);
         }
     }
 
