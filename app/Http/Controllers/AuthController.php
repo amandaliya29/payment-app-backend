@@ -118,6 +118,7 @@ class AuthController extends Controller
                         ->with('bank:id,name');
                 }
             ])
+                ->where('id', '!=', auth()->id())
                 ->where(function ($query) use ($search) {
                     $query->where('phone', 'LIKE', "%{$search}%")
                         ->orWhere('name', 'LIKE', "%{$search}%")
@@ -184,7 +185,7 @@ class AuthController extends Controller
             if (strpos($identifier, '@') !== false) {
                 // Find user by UPI ID
                 $bankAccount = UserBankAccounts::where('upi_id', $identifier)
-                    ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary')
+                    ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length')
                     ->first();
 
                 if (!$bankAccount) {
@@ -206,7 +207,7 @@ class AuthController extends Controller
             $user = User::with([
                 'bankAccounts' => function ($query) {
                     $query->where('is_primary', true)
-                        ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary');
+                        ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length');
                 }
             ])->find($identifier);
 
