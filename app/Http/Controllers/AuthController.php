@@ -197,7 +197,7 @@ class AuthController extends Controller
                 }
 
                 $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
-                $user->bank_accounts = $bankAccount; // attach only that UPI’s bank account
+                $user->bank_account = $bankAccount; // attach only that UPI’s bank account
 
                 return $this->successResponse($user->toArray(), "User fetched successfully (via UPI ID)");
             }
@@ -215,13 +215,13 @@ class AuthController extends Controller
             }
 
             $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
-            $primaryBankAccount = $user->bank_accounts->first();
-            unset($user->bank_accounts);
-            $user->bank_accounts = $primaryBankAccount;
+            $primaryBankAccount = $user->bankAccounts->first();
+            unset($user->bankAccounts);
+            $user->bank_account = $primaryBankAccount;
 
             return $this->successResponse($user->toArray(), "User fetched successfully (via User ID)");
         } catch (\Throwable $th) {
-            return $this->errorResponse("Internal Server Error", 500);
+            return $this->errorResponse($th->getMessage(), 500);
         }
     }
 
