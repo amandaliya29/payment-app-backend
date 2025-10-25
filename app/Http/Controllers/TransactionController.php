@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserBankAccounts;
 use App\Services\ApplicationNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -112,6 +113,7 @@ class TransactionController extends Controller
             'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
             'description' => 'nullable|string|max:255',
+            'pin_code' => 'required|digits_between:4,6',
         ]);
 
         // validation error
@@ -140,6 +142,10 @@ class TransactionController extends Controller
 
             if ($receiverBankAccount->id == $senderBankAccount->id) {
                 return $this->errorResponse("Invalid receiver account", 400);
+            }
+
+            if (!Hash::check($request->pin_code, $senderBankAccount->pin_code)) {
+                return $this->errorResponse("Invalid Pin", 400);
             }
 
             if ($senderBankAccount->amount < $request->amount) {
@@ -214,6 +220,7 @@ class TransactionController extends Controller
             'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
             'description' => 'nullable|string|max:255',
+            'pin_code' => 'required|digits_between:4,6',
         ]);
 
         // validation error
@@ -239,6 +246,10 @@ class TransactionController extends Controller
 
             if (!$receiverBankAccount) {
                 return $this->errorResponse("Receiver bank account not found", 404);
+            }
+
+            if (!Hash::check($request->pin_code, $senderCreditUpi->pin_code)) {
+                return $this->errorResponse("Invalid Pin", 400);
             }
 
             if ($senderCreditUpi->available_credit < $request->amount) {
