@@ -55,7 +55,8 @@ class AuthController extends Controller
             $token = $user->createToken('user-auth')->plainTextToken;
 
             $accessToken = $user->tokens()->latest()->first();
-            $accessToken->update(['fcm_token' => $request->fcm_token]);
+            $accessToken->fcm_token = $request->fcm_token;
+            $accessToken->save();
 
             return $this->successResponse(
                 ['token' => $token, 'user' => $user],
@@ -171,25 +172,56 @@ class AuthController extends Controller
     }
 
     /**
-     * Get single user details by user_id (from route param).
+     * Get single user details by identifier (from route param).
      *
-     * @param int $user_id The ID of the user to fetch.
+     * @param string $identifier The identifier of the user to fetch.
      * @return \Illuminate\Http\JsonResponse
      */
-    public function get($user_id)
+    public function get($identifier)
     {
         try {
-            $user = User::with('bankAccounts')->find($user_id);
+            // Check if the identifier looks like a UPI ID (contains '@')
+            if (strpos($identifier, '@') !== false) {
+                // Find user by UPI ID
+                $bankAccount = UserBankAccounts::where('upi_id', $identifier)
+                    ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary')
+                    ->first();
+
+                if (!$bankAccount) {
+                    return $this->errorResponse("User not found for given UPI ID", 404);
+                }
+
+                $user = User::find($bankAccount->user_id);
+                if (!$user) {
+                    return $this->errorResponse("User not found", 404);
+                }
+
+                $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
+                $user->bankAccounts = [$bankAccount]; // attach only that UPI’s bank account
+
+                return $this->successResponse($user->toArray(), "User fetched successfully (via UPI ID)");
+            }
+
+            // Otherwise, treat it as a user_id
+            $user = User::with([
+                'bankAccounts' => function ($query) {
+                    $query->where('is_primary', true)
+                        ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary');
+                }
+            ])->find($identifier);
 
             if (!$user) {
                 return $this->errorResponse("User not found", 404);
             }
 
-            return $this->successResponse($user->toArray(), "User fetched successfully");
+            $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
+
+            return $this->successResponse($user->toArray(), "User fetched successfully (via User ID)");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
 
     /**
      * Fetch the authenticated user's profile along with their bank accounts.
