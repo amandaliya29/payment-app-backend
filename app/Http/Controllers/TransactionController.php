@@ -111,6 +111,7 @@ class TransactionController extends Controller
                 }),
             ],
             'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
+            'mobile_no' => 'nullable|exists:users,phone',
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
             'description' => 'nullable|string|max:255',
             'pin_code' => 'required|digits_between:4,6',
@@ -121,15 +122,22 @@ class TransactionController extends Controller
             return $this->errorResponse($validation->errors()->first(), 422);
         }
 
-        if (empty($request->to_bank_account) && empty($request->upi_id)) {
+        if (empty($request->to_bank_account) && empty($request->upi_id) && empty($request->mobile_no)) {
             return $this->errorResponse("Receiver account or UPI ID is required", 422);
         }
 
         try {
 
-            $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
-                ->orWhere('upi_id', $request->upi_id)
-                ->first();
+            if ($request->mobile_no) {
+                $receiver = User::where('phone', $request->mobile_no)->first();
+                $receiverBankAccount = UserBankAccounts::where('user_id', $receiver->id)
+                    ->where('is_primary', true)
+                    ->first();
+            } else {
+                $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
+                    ->orWhere('upi_id', $request->upi_id)
+                    ->first();
+            }
 
             if (!$receiverBankAccount) {
                 return $this->errorResponse("Receiver bank account not found", 404);
@@ -184,7 +192,16 @@ class TransactionController extends Controller
                 $notificationData
             );
 
-            return $this->successResponse([], "Send successfully");
+            return $this->successResponse([
+                'transaction_id' => $transactionId,
+                'amount' => $request->amount,
+                'timestamp' => now(),
+                'receiver' => [
+                    'name' => $receiver->name,
+                    'phone' => $receiver->phone,
+                    'bank_account_number' => substr($receiverBankAccount->account_number, -4)
+                ]
+            ], "Pay successfully");
         } catch (\Throwable $th) {
             $this->transaction((object) [
                 'transaction_id' => $transactionId,
@@ -221,6 +238,7 @@ class TransactionController extends Controller
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
             'description' => 'nullable|string|max:255',
             'pin_code' => 'required|digits_between:4,6',
+            'mobile_no' => 'nullable|exists:users,phone',
         ]);
 
         // validation error
@@ -236,13 +254,20 @@ class TransactionController extends Controller
                 return $this->errorResponse('Unauthorized', 403);
             }
 
-            if (empty($request->to_bank_account) && empty($request->upi_id)) {
+            if (empty($request->to_bank_account) && empty($request->upi_id) && empty($request->mobile_no)) {
                 return $this->errorResponse("Receiver account or UPI ID is required", 422);
             }
 
-            $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
-                ->orWhere('upi_id', $request->upi_id)
-                ->first();
+            if ($request->mobile_no) {
+                $receiver = User::where('phone', $request->mobile_no)->first();
+                $receiverBankAccount = UserBankAccounts::where('user_id', $receiver->id)
+                    ->where('is_primary', true)
+                    ->first();
+            } else {
+                $receiverBankAccount = UserBankAccounts::where('id', $request->to_bank_account)
+                    ->orWhere('upi_id', $request->upi_id)
+                    ->first();
+            }
 
             if (!$receiverBankAccount) {
                 return $this->errorResponse("Receiver bank account not found", 404);
@@ -288,7 +313,16 @@ class TransactionController extends Controller
                 $notificationData
             );
 
-            return $this->successResponse([], "Send successfully");
+            return $this->successResponse([
+                'transaction_id' => $transactionId,
+                'amount' => $request->amount,
+                'timestamp' => now(),
+                'receiver' => [
+                    'name' => $receiver->name,
+                    'phone' => $receiver->phone,
+                    'bank_account_number' => substr($receiverBankAccount->account_number, -4)
+                ]
+            ], "Pay successfully");
         } catch (\Throwable $th) {
             $this->transaction((object) [
                 'transaction_id' => $transactionId,
