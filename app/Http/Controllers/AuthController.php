@@ -209,7 +209,8 @@ class AuthController extends Controller
                     $query->where('is_primary', true)
                         ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length');
                 }
-            ])->find($identifier);
+            ])->where('id', $identifier)
+                ->orWhere('phone', $identifier)->first();
 
             if (!$user) {
                 return $this->errorResponse("User not found", 404);
