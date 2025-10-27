@@ -198,7 +198,7 @@ class TransactionController extends Controller
                 'timestamp' => now(),
                 'receiver' => [
                     'name' => $receiver->name,
-                    'phone' => $receiver->phone,
+                    'account_holder_name' => $receiverBankAccount->account_holder_name,
                     'bank_account_number' => substr($receiverBankAccount->account_number, -4)
                 ]
             ], "Pay successfully");
@@ -319,7 +319,7 @@ class TransactionController extends Controller
                 'timestamp' => now(),
                 'receiver' => [
                     'name' => $receiver->name,
-                    'phone' => $receiver->phone,
+                    'account_holder_name' => $receiverBankAccount->account_holder_name,
                     'bank_account_number' => substr($receiverBankAccount->account_number, -4)
                 ]
             ], "Pay successfully");
@@ -338,132 +338,196 @@ class TransactionController extends Controller
     }
 
     /**
-     * Get authenticated user's transactions with sender & receiver details.
+     * Get authenticated user's transaction history with filters and pagination.
      *
-     * This method retrieves a paginated list of transactions for the logged-in user.
-     * It supports optional filtering by status, type, mode, min_amount, and max_amount.
-     * Each transaction is transformed to include:
-     * - transaction details (id, amount, status, type, mode, description, created_at)
-     * - sender details (from bank account or UPI/Credit UPI)
-     * - receiver details (to bank account)
+     * Filters:
+     *  - status: pending, completed, failed
+     *  - payment_method: array of bank account IDs
+     *  - date_range: 24h, 7d, 14d, 1m, 3m
+     *  - amount_range: upto_1000, 1000_10000, 10000_15000, 15000_25000, 25000_50000, 50000_75000, 75000_100000
+     *  - payment_type: send_money, receive_money, self_transfer
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
-     *
-     * @queryParam status string Filter by transaction status. Example: completed
-     * @queryParam type string Filter by transaction type. Example: bank
-     * @queryParam mode string Filter by mode. Example: debit
-     * @queryParam min_amount float Filter by minimum amount. Example: 100
-     * @queryParam max_amount float Filter by maximum amount. Example: 1000
-     *
-     * @response 200 {
-     *   "current_page": 1,
-     *   "data": [
-     *     {
-     *       "transaction": {
-     *         "id": 15,
-     *         "amount": "500.00",
-     *         "status": "completed",
-     *         "type": "bank",
-     *         "mode": "debit",
-     *         "description": "Payment for order #123",
-     *         "created_at": "2025-10-05T10:30:00.000000Z"
-     *       },
-     *       "sender": {
-     *         "id": 2,
-     *         "name": "Alice",
-     *         "account": "1234567890"
-     *       },
-     *       "receiver": {
-     *         "id": 3,
-     *         "name": "Bob",
-     *         "account": "9876543210"
-     *       }
-     *     }
-     *   ],
-     *   "per_page": 10,
-     *   "total": 1
-     * }
      */
     public function getTransactions(Request $request)
     {
-        $query = Transaction::with([
-            'user',
-            'senderBank.user',
-            'receiverBank.user',
-            'senderUpi.user',
-            'senderCreditUpi.user'
-        ]);
+        try {
+            $authUserId = auth()->id();
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
+            $query = Transaction::with([
+                'senderBank.user',
+                'receiverBank.user',
+                'senderCreditUpi.user',
+                'receiverUpi.user',
+            ])->where(function ($q) use ($authUserId) {
+                $q->whereHas('senderBank', fn($sub) => $sub->where('user_id', $authUserId))
+                    ->orWhereHas('receiverBank', fn($sub) => $sub->where('user_id', $authUserId))
+                    ->orWhereHas('senderCreditUpi', fn($sub) => $sub->where('user_id', $authUserId))
+                    ->orWhereHas('receiverUpi', fn($sub) => $sub->where('user_id', $authUserId));
+            });
 
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
-        }
-
-        if ($request->filled('mode')) {
-            $query->where('mode', $request->mode);
-        }
-
-        if ($request->filled('min_amount')) {
-            $query->where('amount', '>=', $request->min_amount);
-        }
-        if ($request->filled('max_amount')) {
-            $query->where('amount', '<=', $request->max_amount);
-        }
-
-        $transactions = $query->latest()->paginate(10);
-
-        $data = $transactions->getCollection()->map(function ($tx) {
-            $sender = null;
-            if ($tx->senderBank) {
-                $sender = [
-                    'id' => $tx->senderBank->user->id ?? null,
-                    'name' => $tx->senderBank->user->name ?? null,
-                    'account' => $tx->senderBank->account_number ?? null,
-                ];
-            } elseif ($tx->senderCreditUpi) {
-                $sender = [
-                    'id' => $tx->senderCreditUpi->user->id ?? null,
-                    'name' => $tx->senderCreditUpi->user->name ?? null,
-                    'upi' => $tx->senderCreditUpi->upi_id ?? null,
-                ];
-            } elseif ($tx->senderUpi) {
-                $sender = [
-                    'id' => $tx->senderUpi->user->id ?? null,
-                    'name' => $tx->senderUpi->user->name ?? null,
-                    'upi' => $tx->senderUpi->upi_id ?? null,
-                ];
+            // 1. Status filter
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
             }
 
-            $receiver = null;
-            if ($tx->receiverBank) {
-                $receiver = [
-                    'id' => $tx->receiverBank->user->id ?? null,
-                    'name' => $tx->receiverBank->user->name ?? null,
-                    'account' => $tx->receiverBank->account_number ?? null,
-                ];
+            // 2. Payment method filter
+            if ($request->filled('payment_method')) {
+                $query->where(function ($q) use ($request) {
+                    $q->whereIn('from_account_id', (array) $request->payment_method)
+                        ->orWhereIn('to_account_id', (array) $request->payment_method);
+                });
             }
 
-            return [
-                'transaction' => [
-                    'id' => $tx->id,
-                    'amount' => $tx->amount,
-                    'status' => $tx->status,
-                    'type' => $tx->type,
-                    'mode' => $tx->mode,
-                    'description' => $tx->description,
-                    'created_at' => $tx->created_at,
-                ],
-                'sender' => $sender,
-                'receiver' => $receiver,
-            ];
-        });
+            // 3. Date range filter
+            if ($request->filled('date_range')) {
+                $now = now();
+                switch ($request->date_range) {
+                    case '24h':
+                        $from = $now->subHours(24);
+                        break;
+                    case '7d':
+                        $from = $now->subDays(7);
+                        break;
+                    case '14d':
+                        $from = $now->subDays(14);
+                        break;
+                    case '1m':
+                        $from = $now->subMonth();
+                        break;
+                    case '3m':
+                        $from = $now->subMonths(3);
+                        break;
+                    default:
+                        $from = null;
+                }
+                if ($from) {
+                    $query->where('created_at', '>=', $from);
+                }
+            }
 
-        $transactions->setCollection($data);
-        return response()->json($transactions);
+            // 4. Amount range filter
+            if ($request->filled('amount_range')) {
+                $range = $request->amount_range;
+                switch ($range) {
+                    case 'upto_1000':
+                        $query->where('amount', '<=', 1000);
+                        break;
+                    case '1000_10000':
+                        $query->whereBetween('amount', [1000, 10000]);
+                        break;
+                    case '10000_15000':
+                        $query->whereBetween('amount', [10000, 15000]);
+                        break;
+                    case '15000_25000':
+                        $query->whereBetween('amount', [15000, 25000]);
+                        break;
+                    case '25000_50000':
+                        $query->whereBetween('amount', [25000, 50000]);
+                        break;
+                    case '50000_75000':
+                        $query->whereBetween('amount', [50000, 75000]);
+                        break;
+                    case '75000_100000':
+                        $query->whereBetween('amount', [75000, 100000]);
+                        break;
+                }
+            }
+
+            // 5. Payment type filter
+            if ($request->filled('payment_type')) {
+                $type = $request->payment_type;
+                $query->where(function ($q) use ($type, $authUserId) {
+                    if ($type === 'send_money') {
+                        $q->whereHas('senderBank', fn($sub) => $sub->where('user_id', $authUserId))
+                            ->orWhereHas('senderCreditUpi', fn($sub) => $sub->where('user_id', $authUserId));
+                    } elseif ($type === 'receive_money') {
+                        $q->whereHas('receiverBank', fn($sub) => $sub->where('user_id', $authUserId))
+                            ->orWhereHas('receiverUpi', fn($sub) => $sub->where('user_id', $authUserId));
+                    } elseif ($type === 'self_transfer') {
+                        $q->where(function ($q2) {
+                            $q2->whereColumn('from_account_id', 'to_account_id')
+                                ->orWhereColumn('from_upi_id', 'to_upi_id');
+                        });
+                    }
+                });
+            }
+
+            // Pagination (20 per page)
+            $transactions = $query->latest()->paginate(20);
+
+            // Format & group by month
+            $grouped = $transactions->getCollection()
+                ->map(function ($tx) use ($authUserId) {
+                    $authIsSender = false;
+                    if (
+                        (($tx->senderBank && $tx->senderBank->user_id == $authUserId) ||
+                            ($tx->senderCreditUpi && $tx->senderCreditUpi->user_id == $authUserId))
+                    ) {
+                        $authIsSender = true;
+                    }
+
+                    // Determine counterparty
+                    $counterparty = null;
+                    if ($authIsSender) {
+                        if ($tx->receiverBank) {
+                            $counterparty = [
+                                'id' => $tx->receiverBank->user->id ?? null,
+                                'name' => $tx->receiverBank->user->name ?? null,
+                                'account' => $tx->receiverBank->account_number ?? null,
+                            ];
+                        } elseif ($tx->receiverUpi) {
+                            $counterparty = [
+                                'id' => $tx->receiverUpi->user->id ?? null,
+                                'name' => $tx->receiverUpi->user->name ?? null,
+                                'upi' => $tx->receiverUpi->upi_id ?? null,
+                            ];
+                        }
+                    } else {
+                        if ($tx->senderBank) {
+                            $counterparty = [
+                                'id' => $tx->senderBank->user->id ?? null,
+                                'name' => $tx->senderBank->user->name ?? null,
+                                'account' => $tx->senderBank->account_number ?? null,
+                            ];
+                        } elseif ($tx->senderCreditUpi) {
+                            $counterparty = [
+                                'id' => $tx->senderCreditUpi->user->id ?? null,
+                                'name' => $tx->senderCreditUpi->user->name ?? null,
+                                'upi' => $tx->senderCreditUpi->upi_id ?? null,
+                            ];
+                        } elseif ($tx->senderUpi) {
+                            $counterparty = [
+                                'id' => $tx->senderUpi->user->id ?? null,
+                                'name' => $tx->senderUpi->user->name ?? null,
+                                'upi' => $tx->senderUpi->upi_id ?? null,
+                            ];
+                        }
+                    }
+
+                    // Determine mode: credit or debit
+                    $mode = $authIsSender ? 'debit' : 'credit';
+
+                    return [
+                        'transaction_id' => $tx->transaction_id,
+                        'amount' => $tx->amount,
+                        'status' => $tx->status,
+                        'type' => $tx->type,
+                        'mode' => $mode,
+                        'created_at' => $tx->created_at,
+                        'counterparty' => $counterparty,
+                        'month' => $tx->created_at->format('F Y'),
+                    ];
+                })
+                ->groupBy('month');
+
+            $transactions->setCollection($grouped);
+
+            return $this->successResponse($transactions, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
     }
 
     /**

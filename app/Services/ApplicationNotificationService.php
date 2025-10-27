@@ -67,11 +67,16 @@ class ApplicationNotificationService
 
             // Send notifications to each token
             foreach ($fcmTokens as $fcmToken) {
-                $this->messaging->send(
-                    CloudMessage::withTarget('token', $fcmToken)
-                        ->withNotification(Notification::create($title, $message))
-                        ->withData($payloadData)
-                );
+                try {
+                    $this->messaging->send(
+                        CloudMessage::withTarget('token', $fcmToken)
+                            ->withNotification(Notification::create($title, $message))
+                            ->withData($payloadData)
+                    );
+                } catch (\Throwable $th) {
+                    Log::warning("FCM send failure for user {$receiverID}: " . $th->getMessage());
+                    continue;
+                }
             }
 
             return true;
