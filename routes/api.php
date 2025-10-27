@@ -50,7 +50,7 @@ Route::controller(TransactionController::class)
     ->middleware(['auth:sanctum'])
     ->group(
         function () {
-            Route::get('transactions', 'getTransactions');
+            Route::post('transactions', 'getTransactions');
             Route::get('transaction/get/{id}', 'getTransaction');
             Route::post('pay', 'sendMoney');
             Route::post('credit-upi/pay', 'payWithCreditUpi');

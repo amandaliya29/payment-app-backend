@@ -519,8 +519,7 @@ class TransactionController extends Controller
                         'counterparty' => $counterparty,
                         'month' => $tx->created_at->format('F Y'),
                     ];
-                })
-                ->groupBy('month');
+                });
 
             $transactions->setCollection($grouped);
 
