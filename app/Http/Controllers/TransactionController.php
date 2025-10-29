@@ -440,15 +440,45 @@ class TransactionController extends Controller
                 $type = $request->payment_type;
                 $query->where(function ($q) use ($type, $authUserId) {
                     if ($type === 'send_money') {
-                        $q->whereHas('senderBank', fn($sub) => $sub->where('user_id', $authUserId))
-                            ->orWhereHas('senderCreditUpi', fn($sub) => $sub->where('user_id', $authUserId));
+                        // transactions where auth user is the sender BUT NOT where receiver also belongs to auth user (exclude self transfers)
+                        $q->where(function ($sub) use ($authUserId) {
+                            $sub->whereHas('senderBank', fn($s) => $s->where('user_id', $authUserId))
+                                ->orWhereHas('senderCreditUpi', fn($s) => $s->where('user_id', $authUserId));
+                        })
+                            // Exclude receiver owned by auth user (bank or upi) => avoids counting self-transfers as send_money
+                            ->whereDoesntHave('receiverBank', fn($s) => $s->where('user_id', $authUserId))
+                            ->whereDoesntHave('receiverUpi', fn($s) => $s->where('user_id', $authUserId));
                     } elseif ($type === 'receive_money') {
-                        $q->whereHas('receiverBank', fn($sub) => $sub->where('user_id', $authUserId))
-                            ->orWhereHas('receiverUpi', fn($sub) => $sub->where('user_id', $authUserId));
+                        // transactions where auth user is the receiver BUT NOT where sender also belongs to auth user (exclude self transfers)
+                        $q->where(function ($sub) use ($authUserId) {
+                            $sub->whereHas('receiverBank', fn($s) => $s->where('user_id', $authUserId))
+                                ->orWhereHas('receiverUpi', fn($s) => $s->where('user_id', $authUserId));
+                        })
+                            // Exclude sender owned by auth user (bank or upi)
+                            ->whereDoesntHave('senderBank', fn($s) => $s->where('user_id', $authUserId))
+                            ->whereDoesntHave('senderCreditUpi', fn($s) => $s->where('user_id', $authUserId))
+                            // also check senderUpi if you have that relation (you referenced it elsewhere)
+                            ->whereDoesntHave('senderUpi', fn($s) => $s->where('user_id', $authUserId));
                     } elseif ($type === 'self_transfer') {
-                        $q->where(function ($q2) {
-                            $q2->whereColumn('from_account_id', 'to_account_id')
-                                ->orWhereColumn('from_upi_id', 'to_upi_id');
+                        $q->where(function ($q2) use ($authUserId) {
+                            $q2->where(function ($sub) use ($authUserId) {
+                                $sub->whereHas('senderBank', fn($sub2) => $sub2->where('user_id', $authUserId))
+                                    ->whereHas('receiverBank', fn($sub2) => $sub2->where('user_id', $authUserId));
+                            })
+                                ->orWhere(function ($sub) use ($authUserId) {
+                                    $sub->whereHas('senderCreditUpi', fn($sub2) => $sub2->where('user_id', $authUserId))
+                                        ->whereHas('receiverUpi', fn($sub2) => $sub2->where('user_id', $authUserId));
+                                })
+                                ->orWhere(function ($sub) use ($authUserId) {
+                                    // bank -> upi
+                                    $sub->whereHas('senderBank', fn($sub2) => $sub2->where('user_id', $authUserId))
+                                        ->whereHas('receiverUpi', fn($sub2) => $sub2->where('user_id', $authUserId));
+                                })
+                                ->orWhere(function ($sub) use ($authUserId) {
+                                    // upi -> bank
+                                    $sub->whereHas('senderCreditUpi', fn($sub2) => $sub2->where('user_id', $authUserId))
+                                        ->whereHas('receiverBank', fn($sub2) => $sub2->where('user_id', $authUserId));
+                                });
                         });
                     }
                 });
