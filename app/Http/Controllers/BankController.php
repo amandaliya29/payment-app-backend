@@ -7,6 +7,7 @@ use App\Models\UserBankAccounts;
 use App\Services\UpiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Zxing\QrReader;
@@ -47,15 +48,20 @@ class BankController extends Controller
     public function saveBankDetails(Request $request, UpiService $upiService)
     {
         try {
+            $user = Auth::user();
+
             // validation
             $validation = Validator::make($request->all(), [
                 'bank_id' => 'required|integer|exists:banks,id',
-                'aadhaar_number' => 'required|digits:12',
-                'pan_number' => [
-                    'required',
-                    'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/'
+                'aadhaar_number' => [
+                    $user->aadhar_number ? 'nullable' : 'required',
+                    'digits:12',
                 ],
-                'account_holder_name' => 'required|string|max:255',
+                'pan_number' => [
+                    $user->pan_number ? 'nullable' : 'required',
+                    'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/',
+                ],
+                'account_holder_name' => 'nullable|string|max:255',
                 'account_number' => [
                     'required',
                     'digits_between:9,18',
@@ -78,8 +84,6 @@ class BankController extends Controller
                 return $this->errorResponse($validation->errors()->first(), 422);
             }
 
-            $user = Auth::user();
-
             $updated = false;
             if (!$user->aadhar_number) {
                 $user->aadhar_number = $request->aadhaar_number;
@@ -89,21 +93,25 @@ class BankController extends Controller
                 $user->pan_number = $request->pan_number;
                 $updated = true;
             }
+            if (!$user->name && $request->account_holder_name) {
+                $user->name = $request->account_holder_name;
+                $updated = true;
+            }
             if ($updated) {
                 $user->save();
             }
 
-            $userBankAccount = UserBankAccounts::firstOrNew([
-                'user_id' => Auth::id(),
-                'bank_id' => $request->bank_id,
-            ]);
+            $userBankAccount = new UserBankAccounts();
 
             $userBankAccount->fill([
-                'account_holder_name' => $request->account_holder_name,
+                'user_id' => Auth::id(),
+                'bank_id' => $request->bank_id,
+                'account_holder_name' => $user->name,
                 'account_number' => $request->account_number,
                 'ifsc_code' => $request->ifsc_code,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
+                'pin_code_length' => strlen((string) $request->pin_code),
             ]);
 
             if (!UserBankAccounts::where('user_id', Auth::id())->exists()) {
@@ -161,14 +169,38 @@ class BankController extends Controller
     /**
      * Check the balance of a specific bank account belonging to the authenticated user.
      *
-     * @param int $id  The ID of the bank account to check.
+     * This method verifies the user's identity and pin code before returning
+     * the balance of the requested bank account. It ensures only the owner
+     * of the account can access this information.
+     *
+     * @param \Illuminate\Http\Request $request
+     *     The incoming request containing:
+     *     - `account_id` (int): The ID of the user's bank account.
+     *     - `pin_code` (int): The 4–6 digit PIN code for verification.
      *
      * @return \Illuminate\Http\JsonResponse
+     *     A JSON response containing:
+     *     - On success: The account balance.
+     *     - On failure: An appropriate error message and HTTP status code.
      */
-    public function checkBalance($id)
+    public function checkBalance(Request $request)
     {
         try {
-            $account = UserBankAccounts::where('id', $id)
+            // validation
+            $validation = Validator::make($request->all(), [
+                'account_id' => 'required|integer|exists:user_bank_accounts,id',
+                'pin_code' => 'required|digits_between:4,6',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
+            }
+
+            $account = UserBankAccounts::where('id', $request->account_id)
                 ->where('user_id', auth()->id())
                 ->first();
 
@@ -176,6 +208,11 @@ class BankController extends Controller
                 return $this->errorResponse("Not Found", 404);
             }
 
+            if (!Hash::check($request->pin_code, $account->pin_code)) {
+                return $this->errorResponse("Invalid PIN code", 403);
+            }
+
+            $account->makeVisible('amount');
             return $this->successResponse(['amount' => $account->amount], "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
@@ -194,11 +231,14 @@ class BankController extends Controller
         try {
             $account = UserBankAccounts::with('bank')
                 ->where('user_id', auth()->id())
-                ->get();
-
-            if (!$account) {
-                return $this->errorResponse("Please add a bank account.", 404);
-            }
+                ->get()
+                ->map(function ($account) {
+                    // Mask account number to show only last 4 digits
+                    if (!empty($account->account_number)) {
+                        $account->account_number = 'XXXX XXXX ' . substr($account->account_number, -4);
+                    }
+                    return $account;
+                });
 
             return $this->successResponse($account, "Fetch successfully");
         } catch (\Throwable $th) {

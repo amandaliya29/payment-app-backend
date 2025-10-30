@@ -17,7 +17,7 @@ Route::controller(AuthController::class)
         function () {
             Route::get('get/{id}', 'get');
             Route::get('profile', 'profile');
-            Route::get('search', 'searchUsers');
+            Route::post('search', 'searchUsers');
             Route::post('fcm/update', 'updateFcmToken');
         }
     );
@@ -30,7 +30,7 @@ Route::controller(BankController::class)
             Route::get('list', 'list');
             Route::get('account/list', 'accountList');
             Route::post('details', 'saveBankDetails');
-            Route::get('balance/{account_id}', 'checkBalance');
+            Route::post('balance', 'checkBalance');
             Route::post('qr/scan', 'scan');
         }
     );
@@ -41,7 +41,8 @@ Route::controller(BankCreditUpiController::class)
     ->group(
         function () {
             Route::get('bank/list', 'bankList');
-            Route::get('bank/activate', 'activate');
+            Route::post('activate', 'activate');
+            Route::post('save/pin', 'savePin');
         }
     );
 
@@ -52,5 +53,7 @@ Route::controller(TransactionController::class)
             Route::get('pay', 'sendMoney');
             Route::get('credit-upi/pay', 'payWithCreditUpi');
             Route::get('transactions/recent-users', 'getRecentTransactionUsers');
+            Route::post('transactions', 'getTransactions');
+            Route::get('transaction/get/{id}', 'getTransaction');
         }
     );

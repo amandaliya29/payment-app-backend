@@ -19,6 +19,7 @@ class UserBankAccounts extends Model
         'account_number',
         'ifsc_code',
         'pin_code',
+        'pin_code_length',
     ];
 
     /**
@@ -27,7 +28,8 @@ class UserBankAccounts extends Model
      * @var array
      */
     protected $hidden = [
-        'pin_code',
+        'amount',
+        'pin_code'
     ];
 
     /**
@@ -72,6 +74,19 @@ class UserBankAccounts extends Model
     }
 
     /**
+     * Get the user that owns this model.
+     *
+     * Defines an inverse one-to-many (belongsTo) relationship
+     * between this model and the User model.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    /**
      * Get the bank associated with the user bank account.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
@@ -79,5 +94,22 @@ class UserBankAccounts extends Model
     public function bankCreditUpi()
     {
         return $this->belongsTo(UserBankCreditUpi::class, 'id', 'bank_account_id');
+    }
+
+    /**
+     * Get the account type in capitalized format.
+     * 
+     * This accessor ensures that each word in the account type is capitalized
+     * and underscores are replaced with spaces for display purposes.
+     *
+     * @param string $value The stored account type value.
+     * @return string
+     */
+    public function getAccountTypeAttribute($value)
+    {
+        // Split by underscore, capitalize each word, then join with space
+        $words = explode('_', strtolower($value));
+        $words = array_map('ucfirst', $words);
+        return implode(' ', $words); // e.g., "fixed_deposit" -> "Fixed Deposit"
     }
 }

@@ -55,7 +55,8 @@ class AuthController extends Controller
             $token = $user->createToken('user-auth')->plainTextToken;
 
             $accessToken = $user->tokens()->latest()->first();
-            $accessToken->update(['fcm_token' => $request->fcm_token]);
+            $accessToken->fcm_token = $request->fcm_token;
+            $accessToken->save();
 
             return $this->successResponse(
                 ['token' => $token, 'user' => $user],
@@ -112,27 +113,17 @@ class AuthController extends Controller
             $search = $request->input('search');
 
             $users = User::with([
-                'bankAccounts.bank' => function ($query) {
-                    $query->select('id', 'name');
-                },
-                'bankAccounts' => function ($query) {
-                    $query->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'aadhaar_number', 'pan_number', 'is_primary')
-                        ->whereNotNull('aadhaar_number')
-                        ->whereNotNull('pan_number');
+                'bankAccounts' => function ($q) {
+                    $q->select('id', 'user_id', 'bank_id', 'account_holder_name', 'upi_id', 'is_primary')
+                        ->with('bank:id,name');
                 }
             ])
+                ->where('id', '!=', auth()->id())
                 ->where(function ($query) use ($search) {
-                    $query->where(function ($q) use ($search) {
-                        $q->where('phone', 'LIKE', "%{$search}%")
-                            ->whereHas('bankAccounts', function ($q2) {
-                                $q2->where('is_primary', 1);
-                            });
-                    })
-                        ->orWhereHas('bankAccounts', function ($q) use ($search) {
-                            $q->where('upi_id', 'LIKE', "%{$search}%")
-                                ->whereNotNull('aadhaar_number')
-                                ->whereNotNull('pan_number');
-                        });
+                    $query->where('phone', 'LIKE', "%{$search}%")
+                        ->orWhere('name', 'LIKE', "%{$search}%")
+                        ->whereHas('bankAccounts', fn($q) => $q->where('is_primary', 1))
+                        ->orWhereHas('bankAccounts', fn($q) => $q->where('upi_id', 'LIKE', "%{$search}%"));
                 })
                 ->get();
 
@@ -182,25 +173,60 @@ class AuthController extends Controller
     }
 
     /**
-     * Get single user details by user_id (from route param).
+     * Get single user details by identifier (from route param).
      *
-     * @param int $user_id The ID of the user to fetch.
+     * @param string $identifier The identifier of the user to fetch.
      * @return \Illuminate\Http\JsonResponse
      */
-    public function get($user_id)
+    public function get($identifier)
     {
         try {
-            $user = User::with('bankAccounts')->find($user_id);
+            // Check if the identifier looks like a UPI ID (contains '@')
+            if (strpos($identifier, '@') !== false) {
+                // Find user by UPI ID
+                $bankAccount = UserBankAccounts::where('upi_id', $identifier)
+                    ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length')
+                    ->first();
+
+                if (!$bankAccount) {
+                    return $this->errorResponse("User not found for given UPI ID", 404);
+                }
+
+                $user = User::find($bankAccount->user_id);
+                if (!$user) {
+                    return $this->errorResponse("User not found", 404);
+                }
+
+                $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
+                $user->bank_account = $bankAccount; // attach only that UPI’s bank account
+
+                return $this->successResponse($user->toArray(), "User fetched successfully (via UPI ID)");
+            }
+
+            // Otherwise, treat it as a user_id
+            $user = User::with([
+                'bankAccounts' => function ($query) {
+                    $query->where('is_primary', true)
+                        ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length');
+                }
+            ])->where('id', $identifier)
+                ->orWhere('phone', $identifier)->first();
 
             if (!$user) {
                 return $this->errorResponse("User not found", 404);
             }
 
-            return $this->successResponse($user->toArray(), "User fetched successfully");
+            $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
+            $primaryBankAccount = $user->bankAccounts->first();
+            unset($user->bankAccounts);
+            $user->bank_account = $primaryBankAccount;
+
+            return $this->successResponse($user->toArray(), "User fetched successfully (via User ID)");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
 
     /**
      * Fetch the authenticated user's profile along with their bank accounts.

@@ -51,4 +51,30 @@ class UserBankCreditUpi extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    /**
+     * Get the Bank associated with this UserBankCreditUpi through UserBankAccounts.
+     *
+     * This defines a "hasOneThrough" relationship:
+     * - The final model is `Bank`.
+     * - The intermediate model is `UserBankAccounts`.
+     * - Local key on this model (`UserBankCreditUpi`) is `bank_account_id`.
+     * - Foreign key on intermediate model (`UserBankAccounts`) is `bank_id`.
+     * - Local key on intermediate model is `id`.
+     * - Foreign key on final model (`Bank`) is `id`.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasOneThrough
+     */
+    public function bank()
+    {
+        // Access the bank through bankAccount
+        return $this->hasOneThrough(
+            Bank::class,          // Final model
+            UserBankAccounts::class,   // Intermediate model
+            'id',                 // Foreign key on BankAccount (local key in this model is bank_account_id)
+            'id',                 // Foreign key on Bank (bank_id in Bank table)
+            'bank_account_id',    // Local key on UserBankCreditUpi
+            'bank_id'             // Local key on BankAccount
+        );
+    }
 }
