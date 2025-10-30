@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Bank;
+use App\Models\IfscDetail;
 use App\Models\UserBankAccounts;
 use App\Services\UpiService;
 use Illuminate\Http\Request;
@@ -67,10 +68,6 @@ class BankController extends Controller
                     'digits_between:9,18',
                     'unique:user_bank_accounts,account_number'
                 ],
-                'ifsc_code' => [
-                    'required',
-                    'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/'
-                ],
                 'account_type' => 'required|in:saving,current,salary,fixed_deposit',
                 'pin_code' => [
                     'required',
@@ -101,6 +98,10 @@ class BankController extends Controller
                 $user->save();
             }
 
+            $ifscDetail = IfscDetail::where('bank_id', $request->bank_id)
+                ->inRandomOrder()
+                ->first();
+
             $userBankAccount = new UserBankAccounts();
 
             $userBankAccount->fill([
@@ -108,7 +109,7 @@ class BankController extends Controller
                 'bank_id' => $request->bank_id,
                 'account_holder_name' => $user->name,
                 'account_number' => $request->account_number,
-                'ifsc_code' => $request->ifsc_code,
+                'ifsc_detail_id' => $ifscDetail->id,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
                 'pin_code_length' => strlen((string) $request->pin_code),

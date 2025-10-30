@@ -17,7 +17,7 @@ class UserBankAccounts extends Model
         'bank_id',
         'account_holder_name',
         'account_number',
-        'ifsc_code',
+        'ifsc_detail_id',
         'pin_code',
         'pin_code_length',
     ];
@@ -111,5 +111,15 @@ class UserBankAccounts extends Model
         $words = explode('_', strtolower($value));
         $words = array_map('ucfirst', $words);
         return implode(' ', $words); // e.g., "fixed_deposit" -> "Fixed Deposit"
+    }
+
+    /**
+     * Get the IFSC detail associated with the user's bank account.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function ifscDetail()
+    {
+        return $this->belongsTo(IfscDetail::class, 'ifsc_detail_id');
     }
 }
