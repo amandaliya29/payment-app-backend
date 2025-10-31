@@ -32,6 +32,7 @@ Route::controller(BankController::class)
             Route::post('details', 'saveBankDetails');
             Route::post('balance', 'checkBalance');
             Route::post('qr/scan', 'scan');
+            Route::post('ifsc/search', 'searchIfscDetails');
         }
     );
 

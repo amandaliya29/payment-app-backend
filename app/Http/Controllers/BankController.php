@@ -246,4 +246,23 @@ class BankController extends Controller
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
+
+    /**
+     * Retrieve all IFSC details with their associated bank information.
+     *
+     * This method fetches a list of IFSC details along with the related
+     * bank data. It handles any exceptions that occur during the process
+     * and returns a standardized API response.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function searchIfscDetails()
+    {
+        try {
+            $ifscDetails = IfscDetail::with('bank')->get();
+            return $this->successResponse($ifscDetails, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
 }
