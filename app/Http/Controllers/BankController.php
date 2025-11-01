@@ -257,12 +257,30 @@ class BankController extends Controller
      *                                       with related bank and IFSC details if successful,
      *                                       or an error message in case of an exception.
      */
-    public function account(Request $request, $id)
+    public function account(Request $request)
     {
         try {
+            $validation = Validator::make($request->all(), [
+                'account_id' => 'required|integer|exists:user_bank_accounts,id',
+                'pin_code' => 'required|digits_between:4,6',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
+            }
+
             $account = UserBankAccounts::with(['bank', 'ifscDetail'])
+                ->where('id', $request->account_id)
                 ->where('user_id', auth()->id())
-                ->get();
+                ->first();
+
+            if (!Hash::check($request->pin_code, $account->pin_code)) {
+                return $this->errorResponse("Invalid PIN code", 403);
+            }
 
             return $this->successResponse($account, "Fetch successfully");
         } catch (\Throwable $th) {
