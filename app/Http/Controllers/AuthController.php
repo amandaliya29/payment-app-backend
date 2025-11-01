@@ -181,43 +181,45 @@ class AuthController extends Controller
     public function get($identifier)
     {
         try {
-            // Check if the identifier looks like a UPI ID (contains '@')
+            $bankAccount = null;
+
+            // Case 1: Looks like a UPI ID
             if (strpos($identifier, '@') !== false) {
-                // Find user by UPI ID
                 $bankAccount = UserBankAccounts::where('upi_id', $identifier)
                     ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length')
                     ->first();
+            }
 
-                if (!$bankAccount) {
-                    // Try to find matching account number (decrypt in PHP)
-                    $bankAccount = UserBankAccounts::all()->first(function ($account) use ($identifier) {
-                        return $account->account_number === $identifier;
-                    });
-                }
+            // Case 2: Try account number (if not found by UPI or identifier not a UPI)
+            if (!$bankAccount) {
+                $bankAccount = UserBankAccounts::all()->first(function ($account) use ($identifier) {
+                    return $account->account_number === $identifier;
+                });
+            }
 
-                if (!$bankAccount) {
-                    return $this->errorResponse("User not found for given UPI ID or Account Number", 404);
-                }
-
+            // If we found a bank account by either method
+            if ($bankAccount) {
                 $user = User::find($bankAccount->user_id);
                 if (!$user) {
                     return $this->errorResponse("User not found", 404);
                 }
 
                 $user->makeHidden(['firebase_uid', 'aadhar_number', 'pan_number']);
-                $user->bank_account = $bankAccount; // attach only that UPI’s bank account
+                $user->bank_account = $bankAccount;
 
-                return $this->successResponse($user->toArray(), "User fetched successfully (via UPI ID)");
+                return $this->successResponse($user->toArray(), "User fetched successfully (via UPI or Account Number)");
             }
 
-            // Otherwise, treat it as a user_id
+            // Otherwise, treat it as user_id or phone
             $user = User::with([
                 'bankAccounts' => function ($query) {
                     $query->where('is_primary', true)
                         ->select('id', 'user_id', 'account_holder_name', 'upi_id', 'is_primary', 'pin_code_length');
                 }
-            ])->where('id', $identifier)
-                ->orWhere('phone', $identifier)->first();
+            ])
+                ->where('id', $identifier)
+                ->orWhere('phone', $identifier)
+                ->first();
 
             if (!$user) {
                 return $this->errorResponse("User not found", 404);
@@ -228,12 +230,11 @@ class AuthController extends Controller
             unset($user->bankAccounts);
             $user->bank_account = $primaryBankAccount;
 
-            return $this->successResponse($user->toArray(), "User fetched successfully (via User ID)");
+            return $this->successResponse($user->toArray(), "User fetched successfully (via User ID or Phone)");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
-
 
     /**
      * Fetch the authenticated user's profile along with their bank accounts.
