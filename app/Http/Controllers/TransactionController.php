@@ -105,29 +105,35 @@ class TransactionController extends Controller
         $validation = Validator::make($request->all(), [
             'amount' => 'required|numeric|between:0,999999999999.99',
             'from_bank_account' => [
-                'required',
+                'nullable',
                 Rule::exists('user_bank_accounts', 'id')->where(function ($query) {
                     $query->where('user_id', auth()->id());
                 }),
             ],
+            'credit_upi' => 'nullable|exists:user_bank_credit_upis,upi_id',
             'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
-            'mobile_no' => 'nullable|exists:users,phone',
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
+            'mobile_no' => 'nullable|exists:users,phone',
             'description' => 'nullable|string|max:255',
             'pin_code' => 'required|digits_between:4,6',
         ]);
 
-        // validation error
         if ($validation->fails()) {
             return $this->errorResponse($validation->errors()->first(), 422);
         }
 
+        // Must have at least one source: bank or credit UPI
+        if (empty($request->from_bank_account) && empty($request->credit_upi)) {
+            return $this->errorResponse("Sender account or Credit UPI is required", 422);
+        }
+
+        // Must have at least one receiver
         if (empty($request->to_bank_account) && empty($request->upi_id) && empty($request->mobile_no)) {
             return $this->errorResponse("Receiver account or UPI ID is required", 422);
         }
 
         try {
-
+            // Determine receiver
             if ($request->mobile_no) {
                 $receiver = User::where('phone', $request->mobile_no)->first();
                 $receiverBankAccount = UserBankAccounts::where('user_id', $receiver->id)
@@ -143,42 +149,89 @@ class TransactionController extends Controller
                 return $this->errorResponse("Receiver bank account not found", 404);
             }
 
-            $senderBankAccount = UserBankAccounts::find($request->from_bank_account);
-            if (!$senderBankAccount) {
-                return $this->errorResponse('Sender bank account not found', 404);
+            $transactionType = '';
+            $senderName = auth()->user()->name;
+
+            // 🏦 CASE 1: Sending from normal bank account
+            if ($request->from_bank_account) {
+                $senderBankAccount = UserBankAccounts::find($request->from_bank_account);
+
+                if (!$senderBankAccount) {
+                    return $this->errorResponse('Sender bank account not found', 404);
+                }
+
+                if ($receiverBankAccount->id == $senderBankAccount->id) {
+                    return $this->errorResponse("Invalid receiver account", 400);
+                }
+
+                if (!Hash::check($request->pin_code, $senderBankAccount->pin_code)) {
+                    return $this->errorResponse("Invalid Pin", 400);
+                }
+
+                if ($senderBankAccount->amount < $request->amount) {
+                    return $this->errorResponse("Insufficient balance", 400);
+                }
+
+                DB::transaction(function () use ($senderBankAccount, $receiverBankAccount, $transactionId, $request) {
+                    $receiverBankAccount->increment('amount', $request->amount);
+                    $senderBankAccount->decrement('amount', $request->amount);
+
+                    $this->transaction((object) [
+                        'transaction_id' => $transactionId,
+                        'type' => 'bank',
+                        'amount' => $request->amount,
+                        'description' => $request->description,
+                        'from_account_id' => $request->from_bank_account,
+                        'to_account_id' => $request->to_bank_account ?? null,
+                        'to_upi_id' => $request->upi_id ?? null,
+                    ]);
+                });
+
+                $transactionType = 'bank';
             }
 
-            if ($receiverBankAccount->id == $senderBankAccount->id) {
-                return $this->errorResponse("Invalid receiver account", 400);
+            // 💳 CASE 2: Sending via Credit UPI
+            elseif ($request->credit_upi) {
+                $senderCreditUpi = UserBankCreditUpi::where('upi_id', $request->credit_upi)->first();
+
+                if (!$senderCreditUpi) {
+                    return $this->errorResponse("Credit UPI not found", 404);
+                }
+
+                if ($senderCreditUpi->user_id !== auth()->id()) {
+                    return $this->errorResponse('Unauthorized', 403);
+                }
+
+                if (!Hash::check($request->pin_code, $senderCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid Pin", 400);
+                }
+
+                if ($senderCreditUpi->available_credit < $request->amount) {
+                    return $this->errorResponse("Insufficient balance", 400);
+                }
+
+                DB::transaction(function () use ($senderCreditUpi, $receiverBankAccount, $transactionId, $request) {
+                    $receiverBankAccount->increment('amount', $request->amount);
+                    $senderCreditUpi->decrement('available_credit', $request->amount);
+
+                    $this->transaction((object) [
+                        'transaction_id' => $transactionId,
+                        'type' => 'credit_upi',
+                        'amount' => $request->amount,
+                        'description' => $request->description,
+                        'from_upi_id' => $request->credit_upi,
+                        'to_account_id' => $request->to_bank_account ?? null,
+                        'to_upi_id' => $request->upi_id ?? null,
+                    ]);
+                });
+
+                $transactionType = 'credit_upi';
             }
 
-            if (!Hash::check($request->pin_code, $senderBankAccount->pin_code)) {
-                return $this->errorResponse("Invalid Pin", 400);
-            }
-
-            if ($senderBankAccount->amount < $request->amount) {
-                return $this->errorResponse("Insufficient balance", 400);
-            }
-
-            DB::transaction(function () use ($senderBankAccount, $receiverBankAccount, $transactionId, $request) {
-                $receiverBankAccount->increment('amount', $request->amount);
-                $senderBankAccount->decrement('amount', $request->amount);
-
-                $this->transaction((object) [
-                    'transaction_id' => $transactionId,
-                    'type' => 'bank',
-                    'amount' => $request->amount,
-                    'description' => $request->description,
-                    'from_account_id' => $request->from_bank_account,
-                    'to_account_id' => $request->to_bank_account ?? null,
-                    'to_upi_id' => $request->upi_id ?? null,
-                ]);
-            });
-
+            // ✅ Send Notification to Receiver
             $receiver = User::find($receiverBankAccount->user_id);
-
             $title = "Money Received";
-            $message = "You received ₹{$request->amount} from " . auth()->user()->name;
+            $message = "You received ₹{$request->amount} from " . $senderName;
 
             $notificationData = [
                 'screen' => 'TransactionSuccessScreen',
@@ -194,24 +247,30 @@ class TransactionController extends Controller
 
             return $this->successResponse([
                 'transaction_id' => $transactionId,
+                'type' => $transactionType,
                 'amount' => $request->amount,
                 'timestamp' => now(),
                 'receiver' => [
                     'name' => $receiver->name,
                     'account_holder_name' => $receiverBankAccount->account_holder_name,
-                    'bank_account_number' => substr($receiverBankAccount->account_number, -4)
+                    'bank_account_number' => substr($receiverBankAccount->account_number, -4),
                 ]
             ], "Pay successfully");
+
         } catch (\Throwable $th) {
+            // Fallback transaction record in case of failure
+            $type = $request->from_bank_account ? 'bank' : 'credit_upi';
             $this->transaction((object) [
                 'transaction_id' => $transactionId,
-                'type' => 'bank',
+                'type' => $type,
                 'amount' => $request->amount,
                 'description' => $request->description,
-                'from_account_id' => $request->from_bank_account,
+                'from_account_id' => $request->from_bank_account ?? null,
+                'from_upi_id' => $request->credit_upi ?? null,
                 'to_account_id' => $request->to_bank_account ?? null,
                 'to_upi_id' => $request->upi_id ?? null,
             ], 'failed');
+
             return $this->errorResponse("Internal Server Error", 500);
         }
     }
@@ -648,6 +707,53 @@ class TransactionController extends Controller
             $response['auth_role'] = $authRole;
 
             return $this->successResponse($response, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Get latest 20 unique users the authenticated user has sent money to (receiver only).
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getRecentTransactionUsers()
+    {
+        try {
+            $authUserId = auth()->id();
+
+            $transactions = Transaction::with([
+                'receiverBank.user',
+                'receiverUpi.user',
+            ])
+                ->where(function ($q) use ($authUserId) {
+                    $q->whereHas('senderBank', fn($s) => $s->where('user_id', $authUserId))
+                        ->orWhereHas('senderCreditUpi', fn($s) => $s->where('user_id', $authUserId))
+                        ->orWhereHas('senderUpi', fn($s) => $s->where('user_id', $authUserId));
+                })
+                ->where(function ($q) use ($authUserId) {
+                    $q->whereDoesntHave('receiverBank', fn($r) => $r->where('user_id', $authUserId))
+                        ->whereDoesntHave('receiverUpi', fn($r) => $r->where('user_id', $authUserId));
+                })
+                ->latest()
+                ->get();
+
+            $uniqueReceivers = $transactions
+                ->map(function ($tx) {
+                    if ($tx->receiverBank && $tx->receiverBank->user) {
+                        return $tx->receiverBank->user->only(['id', 'name', 'email', 'phone']);
+                    }
+                    if ($tx->receiverUpi && $tx->receiverUpi->user) {
+                        return $tx->receiverUpi->user->only(['id', 'name', 'email', 'phone']);
+                    }
+                    return null;
+                })
+                ->filter()
+                ->unique('id')
+                ->take(20)
+                ->values();
+
+            return $this->successResponse($uniqueReceivers, "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

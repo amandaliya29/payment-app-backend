@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Bank;
+use App\Models\IfscDetail;
 use App\Models\UserBankAccounts;
 use App\Services\UpiService;
 use Illuminate\Http\Request;
@@ -67,10 +68,6 @@ class BankController extends Controller
                     'digits_between:9,18',
                     'unique:user_bank_accounts,account_number'
                 ],
-                'ifsc_code' => [
-                    'required',
-                    'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/'
-                ],
                 'account_type' => 'required|in:saving,current,salary,fixed_deposit',
                 'pin_code' => [
                     'required',
@@ -101,6 +98,10 @@ class BankController extends Controller
                 $user->save();
             }
 
+            $ifscDetail = IfscDetail::where('bank_id', $request->bank_id)
+                ->inRandomOrder()
+                ->first();
+
             $userBankAccount = new UserBankAccounts();
 
             $userBankAccount->fill([
@@ -108,7 +109,7 @@ class BankController extends Controller
                 'bank_id' => $request->bank_id,
                 'account_holder_name' => $user->name,
                 'account_number' => $request->account_number,
-                'ifsc_code' => $request->ifsc_code,
+                'ifsc_detail_id' => $ifscDetail->id,
                 'account_type' => $request->account_type,
                 'pin_code' => $request->pin_code,
                 'pin_code_length' => strlen((string) $request->pin_code),
@@ -241,6 +242,66 @@ class BankController extends Controller
                 });
 
             return $this->successResponse($account, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Retrieve all bank accounts associated with the authenticated user.
+     *
+     * @param \Illuminate\Http\Request $request The current HTTP request instance.
+     * @param int $id The ID parameter (not currently used in the method).
+     *
+     * @return \Illuminate\Http\JsonResponse Returns a JSON response containing the user's bank accounts
+     *                                       with related bank and IFSC details if successful,
+     *                                       or an error message in case of an exception.
+     */
+    public function account(Request $request)
+    {
+        try {
+            $validation = Validator::make($request->all(), [
+                'account_id' => 'required|integer|exists:user_bank_accounts,id',
+                'pin_code' => 'required|digits_between:4,6',
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse(
+                    $validation->errors()->first(),
+                    422
+                );
+            }
+
+            $account = UserBankAccounts::with(['bank', 'ifscDetail'])
+                ->where('id', $request->account_id)
+                ->where('user_id', auth()->id())
+                ->first();
+
+            if (!Hash::check($request->pin_code, $account->pin_code)) {
+                return $this->errorResponse("Invalid PIN code", 403);
+            }
+
+            return $this->successResponse($account, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Retrieve all IFSC details with their associated bank information.
+     *
+     * This method fetches a list of IFSC details along with the related
+     * bank data. It handles any exceptions that occur during the process
+     * and returns a standardized API response.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function searchIfscDetails()
+    {
+        try {
+            $ifscDetails = IfscDetail::with('bank')->get();
+            return $this->successResponse($ifscDetails, "Fetch successfully");
         } catch (\Throwable $th) {
             return $this->errorResponse("Internal Server Error", 500);
         }

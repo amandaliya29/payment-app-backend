@@ -29,9 +29,11 @@ Route::controller(BankController::class)
         function () {
             Route::get('list', 'list');
             Route::get('account/list', 'accountList');
+            Route::post('account/get', 'account');
             Route::post('details', 'saveBankDetails');
             Route::post('balance', 'checkBalance');
             Route::post('qr/scan', 'scan');
+            Route::post('ifsc/search', 'searchIfscDetails');
         }
     );
 
@@ -50,9 +52,10 @@ Route::controller(TransactionController::class)
     ->middleware(['auth:sanctum'])
     ->group(
         function () {
+            Route::get('pay', 'sendMoney');
+            Route::get('credit-upi/pay', 'payWithCreditUpi');
+            Route::get('transactions/recent-users', 'getRecentTransactionUsers');
             Route::post('transactions', 'getTransactions');
             Route::get('transaction/get/{id}', 'getTransaction');
-            Route::post('pay', 'sendMoney');
-            Route::post('credit-upi/pay', 'payWithCreditUpi');
         }
     );
