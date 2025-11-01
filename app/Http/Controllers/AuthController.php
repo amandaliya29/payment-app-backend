@@ -189,7 +189,14 @@ class AuthController extends Controller
                     ->first();
 
                 if (!$bankAccount) {
-                    return $this->errorResponse("User not found for given UPI ID", 404);
+                    // Try to find matching account number (decrypt in PHP)
+                    $bankAccount = UserBankAccounts::all()->first(function ($account) use ($identifier) {
+                        return $account->account_number === $identifier;
+                    });
+                }
+
+                if (!$bankAccount) {
+                    return $this->errorResponse("User not found for given UPI ID or Account Number", 404);
                 }
 
                 $user = User::find($bankAccount->user_id);

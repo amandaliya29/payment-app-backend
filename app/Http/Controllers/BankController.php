@@ -248,6 +248,29 @@ class BankController extends Controller
     }
 
     /**
+     * Retrieve all bank accounts associated with the authenticated user.
+     *
+     * @param \Illuminate\Http\Request $request The current HTTP request instance.
+     * @param int $id The ID parameter (not currently used in the method).
+     *
+     * @return \Illuminate\Http\JsonResponse Returns a JSON response containing the user's bank accounts
+     *                                       with related bank and IFSC details if successful,
+     *                                       or an error message in case of an exception.
+     */
+    public function account(Request $request, $id)
+    {
+        try {
+            $account = UserBankAccounts::with(['bank', 'ifscDetail'])
+                ->where('user_id', auth()->id())
+                ->get();
+
+            return $this->successResponse($account, "Fetch successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
      * Retrieve all IFSC details with their associated bank information.
      *
      * This method fetches a list of IFSC details along with the related
