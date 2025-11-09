@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\UserBankAccounts;
+use App\Models\UserNpciCreditUpi;
 use App\Services\ApplicationNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -110,7 +111,22 @@ class TransactionController extends Controller
                     $query->where('user_id', auth()->id());
                 }),
             ],
-            'credit_upi' => 'nullable|exists:user_bank_credit_upis,upi_id',
+            'credit_upi' => [
+                'nullable',
+                function ($attribute, $value, $fail) {
+                    $existsInBank = DB::table('user_bank_credit_upis')
+                        ->where('upi_id', $value)
+                        ->exists();
+
+                    $existsInNpci = DB::table('user_npci_credit_upis')
+                        ->where('upi_id', $value)
+                        ->exists();
+
+                    if (!$existsInBank && !$existsInNpci) {
+                        $fail('The selected credit UPI is invalid.');
+                    }
+                },
+            ],
             'to_bank_account' => 'nullable|exists:user_bank_accounts,id',
             'upi_id' => 'nullable|exists:user_bank_accounts,upi_id',
             'mobile_no' => 'nullable|exists:users,phone',
@@ -193,6 +209,10 @@ class TransactionController extends Controller
             // 💳 CASE 2: Sending via Credit UPI
             elseif ($request->credit_upi) {
                 $senderCreditUpi = UserBankCreditUpi::where('upi_id', $request->credit_upi)->first();
+
+                if (!$senderCreditUpi) {
+                    $senderCreditUpi = UserNpciCreditUpi::where('upi_id', $request->credit_upi)->first();
+                }
 
                 if (!$senderCreditUpi) {
                     return $this->errorResponse("Credit UPI not found", 404);

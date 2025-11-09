@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\UserBankAccounts;
 use App\Models\UserBankCreditUpi;
+use App\Models\UserNpciCreditUpi;
 use App\Services\UpiService;
 use Exception;
 use Illuminate\Http\Request;
@@ -87,6 +88,73 @@ class BankCreditUpiController extends Controller
 
             return $this->successResponse(
                 $userBankCreditUpi,
+                "Activate Successful"
+            );
+        } catch (FailedToVerifyToken $e) {
+            return $this->errorResponse("OTP not verified", 403);
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Activate NPCI Credit UPI for the authenticated user.
+     *
+     * This method verifies the Firebase token, checks if the user's NPCI Credit UPI
+     * already exists, and if not, generates a new UPI ID with a random credit limit.
+     * It saves the record in the database and returns a success response.
+     *
+     * @param \Illuminate\Http\Request $request
+     *     The incoming HTTP request containing the Firebase token.
+     * @param \Kreait\Firebase\Auth $auth
+     *     Firebase authentication instance used to verify the user's ID token.
+     * @param \App\Services\UpiService $upiService
+     *     Service responsible for generating unique UPI IDs.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *     Returns a JSON response with success or error message.
+     *
+     * @throws \Kreait\Firebase\Exception\Auth\FailedToVerifyToken
+     *     If Firebase token verification fails.
+     * @throws \Throwable
+     *     For any unexpected internal errors.
+     */
+    public function npciActivate(Request $request, FirebaseAuth $auth, UpiService $upiService)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'token' => 'required|string'
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 403);
+            }
+
+            $verifiedIdToken = $auth->verifyIdToken($request->token);
+            $uid = $verifiedIdToken->claims()->get('sub');
+
+            if (auth()->user()->firebase_uid != $uid) {
+                return $this->errorResponse("User not recognized", 401);
+            }
+
+            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->exists();
+
+            if ($npciCreditUpi) {
+                return $this->errorResponse('Already exists', 409);
+            }
+
+            $npciCreditUpi = new UserBankCreditUpi();
+            $npciCreditUpi->user_id = auth()->id();
+            $npciCreditUpi->upi_id = $upiService->generate(auth()->user()->name);
+            $randomLimit = Arr::random($this->creditAmounts);
+            $npciCreditUpi->credit_limit = $randomLimit;
+            $npciCreditUpi->available_credit = $randomLimit;
+            $npciCreditUpi->save();
+
+            return $this->successResponse(
+                $npciCreditUpi,
                 "Activate Successful"
             );
         } catch (FailedToVerifyToken $e) {
