@@ -278,6 +278,10 @@ class BankController extends Controller
                 ->where('user_id', auth()->id())
                 ->first();
 
+            if (!$account) {
+                return $this->errorResponse("Not found", 404);
+            }
+
             if (!Hash::check($request->pin_code, $account->pin_code)) {
                 return $this->errorResponse("Invalid PIN code", 403);
             }

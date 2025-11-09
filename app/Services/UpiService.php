@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\UserBankAccounts;
 use App\Models\UserBankCreditUpi;
+use App\Models\UserNpciCreditUpi;
 
 class UpiService
 {
@@ -25,7 +26,8 @@ class UpiService
             $upiCandidate = $baseUpi . $randomDigits . $handle;
         } while (
             UserBankAccounts::where('upi_id', $upiCandidate)->exists() ||
-            UserBankCreditUpi::where('upi_id', $upiCandidate)->exists()
+            UserBankCreditUpi::where('upi_id', $upiCandidate)->exists() ||
+            UserNpciCreditUpi::where('upi_id', $upiCandidate)->exists()
         );
 
         return $upiCandidate;
