@@ -224,6 +224,56 @@ class BankCreditUpiController extends Controller
     }
 
     /**
+     * Save or update the NPCI PIN for the authenticated user.
+     *
+     * This method validates the provided PIN code and ensures it matches the confirmation field.
+     * Once validated, it updates the corresponding user's NPCI Credit UPI record with the new PIN.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     *     The HTTP request instance containing:
+     *     - pin_code (string, required): The user's chosen PIN code.
+     *     - pin_code_confirmation (string, required): Must match the `pin_code`.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *     Returns a success response on successful PIN save, or an error response if validation fails or
+     *     an exception occurs.
+     *
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     *     If the UserNpciCreditUpi record for the authenticated user is not found.
+     * @throws \Throwable
+     *     If any unexpected exception occurs during execution.
+     */
+    public function saveNpciPin(Request $request)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'pin_code' => [
+                    'required',
+                    'digits_between:4,6',
+                    'confirmed', // pin_code_confirmation must match
+                ],
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 403);
+            }
+
+            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+            $npciCreditUpi->pin_code = $request->pin_code;
+            $npciCreditUpi->save();
+
+            return $this->successResponse(
+                [],
+                "Pin set Successful"
+            );
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
      * Fetch the user's bank accounts with masked account numbers.
      *
      * @return \Illuminate\Http\JsonResponse
@@ -255,6 +305,34 @@ class BankCreditUpiController extends Controller
 
             return $this->successResponse(
                 $userBankAccounts,
+                "Fetched Successfully"
+            );
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Retrieve the NPCI Credit UPI details for the authenticated user.
+     *
+     * This method fetches the user's NPCI Credit UPI record and dynamically sets its
+     * `status` as "active" if a PIN code exists, or "inactive" otherwise.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *     Returns a success response containing the NPCI Credit UPI details with the status,
+     *     or an error response if the record is not found or an exception occurs.
+     *
+     * @throws \Throwable
+     *     If any unexpected error occurs during execution.
+     */
+    public function detailsNpci()
+    {
+        try {
+            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+            $npciCreditUpi->status = $npciCreditUpi->pin_code ? 'active' : 'inactive';
+
+            return $this->successResponse(
+                $npciCreditUpi,
                 "Fetched Successfully"
             );
         } catch (\Throwable $th) {

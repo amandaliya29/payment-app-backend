@@ -46,6 +46,8 @@ Route::controller(BankCreditUpiController::class)
             Route::post('activate', 'activate');
             Route::post('npci-activate', 'npciActivate');
             Route::post('save/pin', 'savePin');
+            Route::post('npci/save/pin', 'saveNpciPin');
+            Route::post('npci/details', 'detailsNpci');
         }
     );
 
