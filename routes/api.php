@@ -47,7 +47,7 @@ Route::controller(BankCreditUpiController::class)
             Route::post('npci-activate', 'npciActivate');
             Route::post('save/pin', 'savePin');
             Route::post('npci/save/pin', 'saveNpciPin');
-            Route::post('npci/details', 'detailsNpci');
+            Route::get('npci/details', 'detailsNpci');
         }
     );
 
@@ -56,6 +56,7 @@ Route::controller(TransactionController::class)
     ->group(
         function () {
             Route::post('pay', 'sendMoney');
+            Route::post('pay-bank', 'payToBank');
             Route::get('credit-upi/pay', 'payWithCreditUpi');
             Route::get('transactions/recent-users', 'getRecentTransactionUsers');
             Route::post('transactions', 'getTransactions');
