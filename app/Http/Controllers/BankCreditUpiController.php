@@ -328,7 +328,12 @@ class BankCreditUpiController extends Controller
     public function detailsNpci()
     {
         try {
-            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->first();
+
+            if (!$npciCreditUpi) {
+                return $this->errorResponse("Not Found", 404);
+            }
+
             $npciCreditUpi->status = $npciCreditUpi->pin_code ? 'active' : 'inactive';
 
             return $this->successResponse(

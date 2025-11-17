@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bank;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\UserBankAccounts;
@@ -67,6 +68,8 @@ class TransactionController extends Controller
                 $transaction->to_account_id = $payload->to_account_id;
             } elseif (!empty($payload->to_upi_id)) {
                 $transaction->to_upi_id = $payload->to_upi_id;
+            } elseif (!empty($payload->to_bank_id)) {
+                $transaction->to_bank_id = $payload->to_bank_id;
             } else {
                 throw new \Exception("Invalid receiver details");
             }
@@ -289,6 +292,184 @@ class TransactionController extends Controller
                 'from_upi_id' => $request->credit_upi ?? null,
                 'to_account_id' => $request->to_bank_account ?? null,
                 'to_upi_id' => $request->upi_id ?? null,
+            ], 'failed');
+
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Handle payment transaction from Bank Account or Credit UPI to Bank.
+     *
+     * Validates request, ensures correct sender source (bank / credit UPI),
+     * ensures PIN verification, balance/credit availability checks,
+     * and logs a transaction record.
+     *
+     * @param \Illuminate\Http\Request $request
+     *      - amount: float, required, transaction amount  
+     *      - from_bank_account: int|null, sender bank account ID  
+     *      - credit_upi: string|null, sender credit UPI  
+     *      - to_bank: int, receiver bank ID  
+     *      - description: string|null, transaction note  
+     *      - pin_code: int, required, 4–6 digit PIN  
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @throws \Throwable
+     */
+    public function payToBank(Request $request)
+    {
+        $transactionId = $this->generateTransactionId();
+
+        // validation
+        $validation = Validator::make($request->all(), [
+            'amount' => 'required|numeric|between:0,999999999999.99',
+            'from_bank_account' => [
+                'nullable',
+                Rule::exists('user_bank_accounts', 'id')->where(function ($query) {
+                    $query->where('user_id', auth()->id());
+                }),
+            ],
+            'credit_upi' => [
+                'nullable',
+                function ($attribute, $value, $fail) {
+                    $existsInBank = DB::table('user_bank_credit_upis')
+                        ->where('upi_id', $value)
+                        ->exists();
+
+                    $existsInNpci = DB::table('user_npci_credit_upis')
+                        ->where('upi_id', $value)
+                        ->exists();
+
+                    if (!$existsInBank && !$existsInNpci) {
+                        $fail('The selected credit UPI is invalid.');
+                    }
+                },
+            ],
+            'to_bank' => 'nullable|exists:banks,id',
+            'description' => 'nullable|string|max:255',
+            'pin_code' => 'required|digits_between:4,6',
+        ]);
+
+        if ($validation->fails()) {
+            return $this->errorResponse($validation->errors()->first(), 422);
+        }
+
+        // Must have at least one source: bank or credit UPI
+        if (empty($request->from_bank_account) && empty($request->credit_upi)) {
+            return $this->errorResponse("Sender account or Credit UPI is required", 422);
+        }
+
+        // Must have at least one receiver
+        if (empty($request->to_bank)) {
+            return $this->errorResponse("Bank selection is required.", 422);
+        }
+
+        try {
+            // Determine receiver
+            $receiverBank = Bank::find($request->to_bank);
+
+            if (!$receiverBank) {
+                return $this->errorResponse("Bank Not found", 404);
+            }
+
+            $transactionType = '';
+
+            // 🏦 CASE 1: Sending from normal bank account
+            if ($request->from_bank_account) {
+                $senderBankAccount = UserBankAccounts::find($request->from_bank_account);
+
+                if (!$senderBankAccount) {
+                    return $this->errorResponse('Sender bank account not found', 404);
+                }
+
+                if (!Hash::check($request->pin_code, $senderBankAccount->pin_code)) {
+                    return $this->errorResponse("Invalid Pin", 400);
+                }
+
+                if ($senderBankAccount->amount < $request->amount) {
+                    return $this->errorResponse("Insufficient balance", 400);
+                }
+
+                DB::transaction(function () use ($senderBankAccount, $receiverBank, $transactionId, $request) {
+                    $senderBankAccount->decrement('amount', $request->amount);
+
+                    $this->transaction((object) [
+                        'transaction_id' => $transactionId,
+                        'type' => 'bank',
+                        'amount' => $request->amount,
+                        'description' => $request->description,
+                        'from_account_id' => $request->from_bank_account,
+                        'to_bank_id' => $request->to_bank ?? null,
+                    ]);
+                });
+
+                $transactionType = 'bank';
+            }
+
+            // 💳 CASE 2: Sending via Credit UPI
+            elseif ($request->credit_upi) {
+                $senderCreditUpi = UserBankCreditUpi::with('bank')->where('upi_id', $request->credit_upi)->first();
+
+                if (!$senderCreditUpi) {
+                    $senderCreditUpi = UserNpciCreditUpi::where('upi_id', $request->credit_upi)->first();
+                }
+
+                if (!$senderCreditUpi) {
+                    return $this->errorResponse("Credit UPI not found", 404);
+                }
+
+                if ($senderCreditUpi->bank_id != $receiverBank->id) {
+                    return $this->errorResponse('Transaction not allowed for this bank', 403);
+                }
+
+                if ($senderCreditUpi->bank_ !== auth()->id()) {
+                    return $this->errorResponse('Unauthorized', 403);
+                }
+
+                if (!Hash::check($request->pin_code, $senderCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid Pin", 400);
+                }
+
+                if ($senderCreditUpi->available_credit < $request->amount) {
+                    return $this->errorResponse("Insufficient balance", 400);
+                }
+
+                DB::transaction(function () use ($senderCreditUpi, $receiverBank, $transactionId, $request) {
+                    $senderCreditUpi->decrement('available_credit', $request->amount);
+
+                    $this->transaction((object) [
+                        'transaction_id' => $transactionId,
+                        'type' => 'credit_upi',
+                        'amount' => $request->amount,
+                        'description' => $request->description,
+                        'from_upi_id' => $request->credit_upi,
+                        'to_bank_id' => $request->to_bank ?? null,
+                    ]);
+                });
+
+                $transactionType = 'credit_upi';
+            }
+
+            return $this->successResponse([
+                'transaction_id' => $transactionId,
+                'type' => $transactionType,
+                'amount' => $request->amount,
+                'timestamp' => now(),
+                'receiver_bank' => $receiverBank
+            ], "Pay successfully");
+
+        } catch (\Throwable $th) {
+            // Fallback transaction record in case of failure
+            $type = $request->from_bank_account ? 'bank' : 'credit_upi';
+            $this->transaction((object) [
+                'transaction_id' => $transactionId,
+                'type' => $type,
+                'amount' => $request->amount,
+                'description' => $request->description,
+                'from_account_id' => $request->from_bank_account ?? null,
+                'from_upi_id' => $request->credit_upi ?? null,
+                'to_bank_id' => $request->to_bank ?? null,
             ], 'failed');
 
             return $this->errorResponse("Internal Server Error", 500);
