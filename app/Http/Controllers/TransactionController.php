@@ -346,7 +346,7 @@ class TransactionController extends Controller
                     }
                 },
             ],
-            'to_bank' => 'nullable|exists:banks,id',
+            'to_bank_credit_upi' => 'required|exists:banks,id',
             'description' => 'nullable|string|max:255',
             'pin_code' => 'required|digits_between:4,6',
         ]);
@@ -361,16 +361,20 @@ class TransactionController extends Controller
         }
 
         // Must have at least one receiver
-        if (empty($request->to_bank)) {
+        if (empty($request->to_bank_credit_upi)) {
             return $this->errorResponse("Bank selection is required.", 422);
         }
 
         try {
             // Determine receiver
-            $receiverBank = Bank::find($request->to_bank);
+            $receiverBank = UserBankCreditUpi::with('bank')->find($request->to_bank_credit_upi);
 
             if (!$receiverBank) {
                 return $this->errorResponse("Bank Not found", 404);
+            }
+
+            if ($receiverBank->available_credit + $request->amount > $receiverBank->credit_limit) {
+                return $this->errorResponse('Credit limit exceeded. Unable to process payment.', 422);
             }
 
             $transactionType = '';
@@ -393,6 +397,7 @@ class TransactionController extends Controller
 
                 DB::transaction(function () use ($senderBankAccount, $receiverBank, $transactionId, $request) {
                     $senderBankAccount->decrement('amount', $request->amount);
+                    $receiverBank->increment('available_credit', $request->amount);
 
                     $this->transaction((object) [
                         'transaction_id' => $transactionId,
@@ -400,7 +405,7 @@ class TransactionController extends Controller
                         'amount' => $request->amount,
                         'description' => $request->description,
                         'from_account_id' => $request->from_bank_account,
-                        'to_bank_id' => $request->to_bank ?? null,
+                        'to_bank_id' => $receiverBank->bank->bank_id ?? null,
                     ]);
                 });
 
@@ -419,11 +424,11 @@ class TransactionController extends Controller
                     return $this->errorResponse("Credit UPI not found", 404);
                 }
 
-                if ($senderCreditUpi->bank_id != $receiverBank->id) {
+                if ($senderCreditUpi->bank_account_id != $receiverBank->bank_account_id) {
                     return $this->errorResponse('Transaction not allowed for this bank', 403);
                 }
 
-                if ($senderCreditUpi->bank_ !== auth()->id()) {
+                if ($senderCreditUpi->user_id !== auth()->id()) {
                     return $this->errorResponse('Unauthorized', 403);
                 }
 
@@ -437,6 +442,7 @@ class TransactionController extends Controller
 
                 DB::transaction(function () use ($senderCreditUpi, $receiverBank, $transactionId, $request) {
                     $senderCreditUpi->decrement('available_credit', $request->amount);
+                    $receiverBank->increment('available_credit', $request->amount);
 
                     $this->transaction((object) [
                         'transaction_id' => $transactionId,
@@ -444,7 +450,7 @@ class TransactionController extends Controller
                         'amount' => $request->amount,
                         'description' => $request->description,
                         'from_upi_id' => $request->credit_upi,
-                        'to_bank_id' => $request->to_bank ?? null,
+                        'to_bank_id' => $receiverBank->bank->bank_id ?? null,
                     ]);
                 });
 
@@ -469,7 +475,7 @@ class TransactionController extends Controller
                 'description' => $request->description,
                 'from_account_id' => $request->from_bank_account ?? null,
                 'from_upi_id' => $request->credit_upi ?? null,
-                'to_bank_id' => $request->to_bank ?? null,
+                'to_bank_id' => $receiverBank->bank->user_id ?? null,
             ], 'failed');
 
             return $this->errorResponse("Internal Server Error", 500);
