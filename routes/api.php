@@ -31,6 +31,7 @@ Route::controller(BankController::class)
             Route::get('account/list', 'accountList');
             Route::post('account/get', 'account');
             Route::post('details', 'saveBankDetails');
+            Route::post('save/pin', 'updatePin'); //update PIN
             Route::post('balance', 'checkBalance');
             Route::post('qr/scan', 'scan');
             Route::get('ifsc/search', 'searchIfscDetails');
@@ -46,7 +47,9 @@ Route::controller(BankCreditUpiController::class)
             Route::post('activate', 'activate');
             Route::post('npci-activate', 'npciActivate');
             Route::post('save/pin', 'savePin');
+            Route::post('update/pin', 'updatePin');
             Route::post('npci/save/pin', 'saveNpciPin');
+            Route::post('npci/update/pin', 'updateNpciPin');
             Route::get('npci/details', 'detailsNpci');
         }
     );
