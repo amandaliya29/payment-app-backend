@@ -212,6 +212,10 @@ class BankCreditUpiController extends Controller
             }
 
             $userBankCreditUpi = UserBankCreditUpi::find($request->bank_credit_upi);
+            if (!is_null($userBankCreditUpi->pin_code)) {
+                return $this->errorResponse('PIN is already set', 404);
+            }
+
             $userBankCreditUpi->pin_code = $request->pin_code;
             $userBankCreditUpi->save();
 
@@ -239,7 +243,7 @@ class BankCreditUpiController extends Controller
      *
      * @throws \Throwable
      */
-    public function updatePin(Request $request)
+    public function updatePin(Request $request, FirebaseAuth $auth)
     {
         try {
             // validation
@@ -250,7 +254,8 @@ class BankCreditUpiController extends Controller
                         $query->where('user_id', auth()->id());
                     }),
                 ],
-                'old_pin_code' => 'required|digits_between:4,6',
+                'token' => 'nullable|string',
+                'old_pin_code' => 'nullable|digits_between:4,6',
                 'new_pin_code' => 'required|digits_between:4,6|confirmed' // new_pin_code_confirmation must match
             ]);
 
@@ -261,8 +266,17 @@ class BankCreditUpiController extends Controller
 
             $userBankCreditUpi = UserBankCreditUpi::find($request->bank_credit_upi);
 
-            if (!Hash::check($request->old_pin_code, $userBankCreditUpi->pin_code)) {
-                return $this->errorResponse("Invalid PIN code", 403);
+            if ($request->filled('token')) {
+                $verifiedIdToken = $auth->verifyIdToken($request->token);
+                $uid = $verifiedIdToken->claims()->get('sub');
+
+                if (auth()->user()->firebase_uid != $uid) {
+                    return $this->errorResponse("User not recognized", 401);
+                }
+            } else {
+                if (!Hash::check($request->old_pin_code, $userBankCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid PIN code", 403);
+                }
             }
 
             $userBankCreditUpi->pin_code = $request->new_pin_code;
@@ -315,6 +329,11 @@ class BankCreditUpiController extends Controller
             }
 
             $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+
+            if (!is_null($npciCreditUpi->pin_code)) {
+                return $this->errorResponse('PIN is already set', 404);
+            }
+
             $npciCreditUpi->pin_code = $request->pin_code;
             $npciCreditUpi->save();
 
@@ -341,12 +360,13 @@ class BankCreditUpiController extends Controller
      *
      * @throws \Throwable
      */
-    public function updateNpciPin(Request $request)
+    public function updateNpciPin(Request $request, FirebaseAuth $auth)
     {
         try {
             // validation
             $validation = Validator::make($request->all(), [
-                'old_pin_code' => 'required|digits_between:4,6',
+                'token' => 'nullable|string',
+                'old_pin_code' => 'nullable|digits_between:4,6',
                 'new_pin_code' => 'required|digits_between:4,6|confirmed' // new_pin_code_confirmation must match
             ]);
 
@@ -356,9 +376,19 @@ class BankCreditUpiController extends Controller
             }
 
             $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
-            if (!Hash::check($request->old_pin_code, $npciCreditUpi->pin_code)) {
-                return $this->errorResponse("Invalid PIN code", 403);
+            if ($request->filled('token')) {
+                $verifiedIdToken = $auth->verifyIdToken($request->token);
+                $uid = $verifiedIdToken->claims()->get('sub');
+
+                if (auth()->user()->firebase_uid != $uid) {
+                    return $this->errorResponse("User not recognized", 401);
+                }
+            } else {
+                if (!Hash::check($request->old_pin_code, $npciCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid PIN code", 403);
+                }
             }
+
 
             $npciCreditUpi->pin_code = $request->new_pin_code;
             $npciCreditUpi->save();
