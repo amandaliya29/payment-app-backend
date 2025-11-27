@@ -8,6 +8,7 @@ use App\Models\UserNpciCreditUpi;
 use App\Services\UpiService;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Kreait\Firebase\Auth as FirebaseAuth;
@@ -211,7 +212,74 @@ class BankCreditUpiController extends Controller
             }
 
             $userBankCreditUpi = UserBankCreditUpi::find($request->bank_credit_upi);
+            if (!is_null($userBankCreditUpi->pin_code)) {
+                return $this->errorResponse('PIN is already set', 404);
+            }
+
             $userBankCreditUpi->pin_code = $request->pin_code;
+            $userBankCreditUpi->save();
+
+            return $this->successResponse(
+                [],
+                "Pin set Successful"
+            );
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Update the PIN code for a user's bank credit UPI.
+     *
+     * This method validates the request, checks the old PIN,
+     * and updates the PIN with the new value if valid.
+     *
+     * @param \Illuminate\Http\Request $request
+     *      - bank_credit_upi: integer, must exist in user_bank_credit_upis table for the authenticated user  
+     *      - old_pin_code: string (4-6 digits)  
+     *      - new_pin_code: string (4-6 digits), must match new_pin_code_confirmation
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @throws \Throwable
+     */
+    public function updatePin(Request $request, FirebaseAuth $auth)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'bank_credit_upi' => [
+                    'required',
+                    Rule::exists('user_bank_credit_upis', 'id')->where(function ($query) {
+                        $query->where('user_id', auth()->id());
+                    }),
+                ],
+                'token' => 'nullable|string',
+                'old_pin_code' => 'nullable|digits_between:4,6',
+                'new_pin_code' => 'required|digits_between:4,6|confirmed' // new_pin_code_confirmation must match
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 403);
+            }
+
+            $userBankCreditUpi = UserBankCreditUpi::find($request->bank_credit_upi);
+
+            if ($request->filled('token')) {
+                $verifiedIdToken = $auth->verifyIdToken($request->token);
+                $uid = $verifiedIdToken->claims()->get('sub');
+
+                if (auth()->user()->firebase_uid != $uid) {
+                    return $this->errorResponse("User not recognized", 401);
+                }
+            } else {
+                if (!Hash::check($request->old_pin_code, $userBankCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid PIN code", 403);
+                }
+            }
+
+            $userBankCreditUpi->pin_code = $request->new_pin_code;
             $userBankCreditUpi->save();
 
             return $this->successResponse(
@@ -261,7 +329,68 @@ class BankCreditUpiController extends Controller
             }
 
             $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+
+            if (!is_null($npciCreditUpi->pin_code)) {
+                return $this->errorResponse('PIN is already set', 404);
+            }
+
             $npciCreditUpi->pin_code = $request->pin_code;
+            $npciCreditUpi->save();
+
+            return $this->successResponse(
+                [],
+                "Pin set Successful"
+            );
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
+     * Update the NPCI Credit UPI PIN for the authenticated user.
+     *
+     * This method validates the request, checks the old PIN against the stored PIN,
+     * and updates it to the new PIN if validation passes.
+     *
+     * @param \Illuminate\Http\Request $request
+     *      - old_pin_code: string (4-6 digits), required  
+     *      - new_pin_code: string (4-6 digits), required, must match new_pin_code_confirmation
+     *
+     * @return \Illuminate\Http\JsonResponse
+     *
+     * @throws \Throwable
+     */
+    public function updateNpciPin(Request $request, FirebaseAuth $auth)
+    {
+        try {
+            // validation
+            $validation = Validator::make($request->all(), [
+                'token' => 'nullable|string',
+                'old_pin_code' => 'nullable|digits_between:4,6',
+                'new_pin_code' => 'required|digits_between:4,6|confirmed' // new_pin_code_confirmation must match
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 403);
+            }
+
+            $npciCreditUpi = UserNpciCreditUpi::where('user_id', auth()->id())->firstOrFail();
+            if ($request->filled('token')) {
+                $verifiedIdToken = $auth->verifyIdToken($request->token);
+                $uid = $verifiedIdToken->claims()->get('sub');
+
+                if (auth()->user()->firebase_uid != $uid) {
+                    return $this->errorResponse("User not recognized", 401);
+                }
+            } else {
+                if (!Hash::check($request->old_pin_code, $npciCreditUpi->pin_code)) {
+                    return $this->errorResponse("Invalid PIN code", 403);
+                }
+            }
+
+
+            $npciCreditUpi->pin_code = $request->new_pin_code;
             $npciCreditUpi->save();
 
             return $this->successResponse(

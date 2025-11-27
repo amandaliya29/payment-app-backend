@@ -129,6 +129,51 @@ class BankController extends Controller
     }
 
     /**
+     * Update user bank account PIN code.
+     *
+     * Validates old pin, matches new pin (with confirmation),
+     * and updates securely using hashing.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updatePin(Request $request)
+    {
+        try {
+            $validation = Validator::make($request->all(), [
+                'account_id' => 'required|integer|exists:user_bank_accounts,id',
+                'old_pin_code' => 'required|digits_between:4,6',
+                'new_pin_code' => 'required|digits_between:4,6|confirmed' // new_pin_code_confirmation must match
+            ]);
+
+            // validation error
+            if ($validation->fails()) {
+                return $this->errorResponse($validation->errors()->first(), 422);
+            }
+
+            $account = UserBankAccounts::where('id', $request->account_id)
+                ->where('user_id', auth()->id())
+                ->first();
+
+            if (!$account) {
+                return $this->errorResponse("Not Found", 404);
+            }
+
+            if (!Hash::check($request->old_pin_code, $account->pin_code)) {
+                return $this->errorResponse("Invalid PIN code", 403);
+            }
+
+            $account->pin_code = $request->new_pin_code;
+            $account->pin_code_length = strlen((string) $request->pin_code);
+            $account->save();
+
+            return $this->successResponse([], "Save successfully");
+        } catch (\Throwable $th) {
+            return $this->errorResponse("Internal Server Error", 500);
+        }
+    }
+
+    /**
      * Scan a QR code from an uploaded image.
      *
      * @param \Illuminate\Http\Request $request

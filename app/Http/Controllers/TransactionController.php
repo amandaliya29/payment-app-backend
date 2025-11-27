@@ -346,7 +346,7 @@ class TransactionController extends Controller
                     }
                 },
             ],
-            'to_bank_credit_upi' => 'required|exists:banks,id',
+            'to_bank_credit_upi' => 'required|exists:user_bank_credit_upis,id',
             'description' => 'nullable|string|max:255',
             'pin_code' => 'required|digits_between:4,6',
         ]);
