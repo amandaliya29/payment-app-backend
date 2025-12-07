@@ -146,7 +146,7 @@ class BankCreditUpiController extends Controller
                 return $this->errorResponse('Already exists', 409);
             }
 
-            $npciCreditUpi = new UserBankCreditUpi();
+            $npciCreditUpi = new UserNpciCreditUpi();
             $npciCreditUpi->user_id = auth()->id();
             $npciCreditUpi->upi_id = $upiService->generate(auth()->user()->name);
             $randomLimit = Arr::random($this->creditAmounts);

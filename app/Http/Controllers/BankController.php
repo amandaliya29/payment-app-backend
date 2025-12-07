@@ -175,7 +175,7 @@ class BankController extends Controller
             }
 
             $account->pin_code = $request->new_pin_code;
-            $account->pin_code_length = strlen((string) $request->pin_code);
+            $account->pin_code_length = strlen((string) $request->old_pin_code);
             $account->save();
 
             return $this->successResponse([], "Save successfully");
