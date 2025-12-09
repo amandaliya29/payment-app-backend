@@ -367,7 +367,7 @@ class TransactionController extends Controller
 
         try {
             // Determine receiver
-            $receiverBank = UserBankCreditUpi::with('bank')->find($request->to_bank_credit_upi);
+            $receiverBank = UserBankCreditUpi::with('bankAccount')->find($request->to_bank_credit_upi);
 
             if (!$receiverBank) {
                 return $this->errorResponse("Bank Not found", 404);
@@ -405,7 +405,7 @@ class TransactionController extends Controller
                         'amount' => $request->amount,
                         'description' => $request->description,
                         'from_account_id' => $request->from_bank_account,
-                        'to_bank_id' => $receiverBank->bank->bank_id ?? null,
+                        'to_bank_id' => $receiverBank->bankAccount?->bank?->id ?? null,
                     ]);
                 });
 
@@ -414,7 +414,7 @@ class TransactionController extends Controller
 
             // 💳 CASE 2: Sending via Credit UPI
             elseif ($request->credit_upi) {
-                $senderCreditUpi = UserBankCreditUpi::with('bank')->where('upi_id', $request->credit_upi)->first();
+                $senderCreditUpi = UserBankCreditUpi::with('bankAccount')->where('upi_id', $request->credit_upi)->first();
 
                 if (!$senderCreditUpi) {
                     $senderCreditUpi = UserNpciCreditUpi::where('upi_id', $request->credit_upi)->first();
@@ -424,7 +424,7 @@ class TransactionController extends Controller
                     return $this->errorResponse("Credit UPI not found", 404);
                 }
 
-                if ($senderCreditUpi->bank_account_id != $receiverBank->bank_account_id) {
+                if ($senderCreditUpi->bank_account_id == $receiverBank->bank_account_id) {
                     return $this->errorResponse('Transaction not allowed for this bank', 403);
                 }
 
@@ -450,7 +450,7 @@ class TransactionController extends Controller
                         'amount' => $request->amount,
                         'description' => $request->description,
                         'from_upi_id' => $request->credit_upi,
-                        'to_bank_id' => $receiverBank->bank->bank_id ?? null,
+                        'to_bank_id' => $receiverBank->bankAccount?->bank?->id ?? null,
                     ]);
                 });
 
@@ -626,6 +626,7 @@ class TransactionController extends Controller
                 'receiverBank.user',
                 'senderCreditUpi.user',
                 'receiverUpi.user',
+                'payBank',
             ])->where(function ($q) use ($authUserId) {
                 $q->whereHas('senderBank', fn($sub) => $sub->where('user_id', $authUserId))
                     ->orWhereHas('receiverBank', fn($sub) => $sub->where('user_id', $authUserId))
@@ -778,6 +779,12 @@ class TransactionController extends Controller
                                 'id' => $tx->receiverUpi->user->id ?? null,
                                 'name' => $tx->receiverUpi->user->name ?? null,
                                 'upi' => $tx->receiverUpi->upi_id ?? null,
+                            ];
+                        } elseif($tx->payBank) {
+                            $counterparty = [
+                                'id' => $tx->payBank->id ?? null,
+                                'name' => $tx->payBank->name ?? null,
+                                'logo' => $tx->payBank->logo ?? null,
                             ];
                         }
                     } else {
