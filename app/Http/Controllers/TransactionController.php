@@ -475,7 +475,7 @@ class TransactionController extends Controller
                 'description' => $request->description,
                 'from_account_id' => $request->from_bank_account ?? null,
                 'from_upi_id' => $request->credit_upi ?? null,
-                'to_bank_id' => $receiverBank->bank->user_id ?? null,
+                'to_bank_id' => $receiverBank->bankAccount?->bank?->id ?? null,
             ], 'failed');
 
             return $this->errorResponse("Internal Server Error", 500);
@@ -641,10 +641,40 @@ class TransactionController extends Controller
 
             // 2. Payment method filter
             if ($request->filled('payment_method')) {
-                $query->where(function ($q) use ($request) {
-                    $q->whereIn('from_account_id', (array) $request->payment_method)
-                        ->orWhereIn('to_account_id', (array) $request->payment_method);
-                });
+                switch ($request->payment_method) {
+                    case 'nbfc_credit_upi':
+                        $nbfcCreditUpiId = UserNpciCreditUpi::where('user_id', $authUserId)->pluck('upi_id')->first();
+                        if ($nbfcCreditUpiId) {
+                            $query->where('from_upi_id', $nbfcCreditUpiId)
+                                ->orWhere('to_upi_id', $nbfcCreditUpiId);
+                        }
+                        break;
+                    case 'credit_upi':
+                        if ($request->filled('upi_id')) {
+                            $query->where('from_upi_id', $request->upi_id)
+                                ->orWhere('to_upi_id', $request->upi_id);
+                        } else {
+                            $query->where(function ($x) use ($authUserId) {
+                                $x->whereHas('senderCreditUpi', function ($s) use ($authUserId) {
+                                    $s->where('user_id', $authUserId);
+                                })
+                                    ->orWhereHas('receiverUpi', function ($r) use ($authUserId) {
+                                        $r->where('user_id', $authUserId);
+                                    });
+                            });
+                        }
+                        break;
+                    default:
+                        if ($request->filled('account_id')) {
+                            $query->where('from_account_id', $request->account_id)
+                                ->orWhere('to_account_id', $request->account_id);
+                        }
+                        break;
+                }
+                // $query->where(function ($q) use ($request) {
+                //     $q->whereIn('from_account_id', (array) $request->payment_method)
+                //         ->orWhereIn('to_account_id', (array) $request->payment_method);
+                // });
             }
 
             // 3. Date range filter
@@ -780,7 +810,7 @@ class TransactionController extends Controller
                                 'name' => $tx->receiverUpi->user->name ?? null,
                                 'upi' => $tx->receiverUpi->upi_id ?? null,
                             ];
-                        } elseif($tx->payBank) {
+                        } elseif ($tx->payBank) {
                             $counterparty = [
                                 'id' => $tx->payBank->id ?? null,
                                 'name' => $tx->payBank->name ?? null,
@@ -852,9 +882,9 @@ class TransactionController extends Controller
                 'receiverBank.user',
                 'receiverBank.bank',
                 'senderCreditUpi.user',
-                'senderCreditUpi.bank',
                 'receiverUpi.user',
                 'receiverUpi.bank',
+                'payBank'
             ])->where('transaction_id', $id)->first();
 
             if (!$transaction) {
